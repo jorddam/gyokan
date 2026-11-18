@@ -223,7 +223,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #nudge button{background:var(--accent);color:var(--on-accent);border-radius:999px;padding:8px 16px;font-weight:600;font-size:.86rem}
 .d-save{margin-left:auto;font-size:.78rem;padding:4px 11px;border-radius:999px;border:1px solid var(--line);color:var(--ink);white-space:nowrap}
 .d-save[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-::highlight(gy-lookup){background-color:color-mix(in srgb,var(--accent) 26%,transparent)}
+.hl{position:absolute;background:color-mix(in srgb,var(--accent) 28%,transparent);border-radius:3px;pointer-events:none;z-index:4}
 #dict{position:absolute;left:0;top:0;width:min(380px,84vw);max-height:min(62vh,520px);overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -18px rgba(0,0,0,.55);padding:6px 18px 10px;z-index:15;font-size:.92rem;line-height:1.55}
 .d-from{font-size:.78rem;color:var(--mute);padding-top:8px}
 .d-entry{padding:10px 0 8px;border-bottom:1px solid var(--line)}
@@ -950,7 +950,8 @@ function hitChar(x,y){
   const r=charRect(lo);if(!r)return null;if(q<(v?r.top:r.left)-3||q>(v?r.bottom:r.right)+3)return null;return lo;
 }
 const dictEl=$('#dict');const dictOpen=()=>!dictEl.hidden;
-function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;try{CSS.highlights&&CSS.highlights.delete('gy-lookup');}catch(e){}}
+const clearHl=()=>{for(const x of readerEl.querySelectorAll('.hl'))x.remove();};
+function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;clearHl();}
 function rangeOf(s,e){const a=nodeAt(s),b=nodeAt(e-1),r=document.createRange();r.setStart(R.nodes[a].n,s-R.nodes[a].off);r.setEnd(R.nodes[b].n,e-R.nodes[b].off);return r;}
 function scanFrom(g){const text=R.text;for(let len=Math.min(14,text.length-g);len>=1;len--){const key=text.slice(g,g+len),ids=dictFind(key);if(ids)return {s:g,e:g+len,key,ids};}return null;}
 function entryNode(i,key,ctx){const en=dictEntry(i);let word,read;
@@ -987,8 +988,10 @@ function lookupAt(g){
   showDict(res.s,res.e,kids);dictEl.dataset.g=g;return true;
 }
 function showDict(s,e,kids){
-  const rgw=rangeOf(s,e);try{if(window.Highlight&&CSS.highlights)CSS.highlights.set('gy-lookup',new Highlight(rgw));}catch(err){}
-  const rect=rgw.getClientRects()[0]||rgw.getBoundingClientRect();
+  // the word is marked with our own boxes, one per piece of the word (Safari paints the built-in highlight over the whole page)
+  const rgw=rangeOf(s,e),rects=[...rgw.getClientRects()].filter(r=>r.width>=2&&r.height>=2);clearHl();
+  for(const r of rects.slice(0,40))readerEl.append(h('div',{class:'hl',style:`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`}));
+  const rect=rects[0]||rgw.getBoundingClientRect();
   dictEl.textContent='';dictEl.append(...kids);dictEl.hidden=false;dictEl.scrollTop=0;dictEl.dataset.g=s;
   const pw=dictEl.offsetWidth,ph=dictEl.offsetHeight,vw=innerWidth,vh=innerHeight,gap=16;let x,y;
   if(isV()){x=rect.left-gap-pw;if(x<12)x=rect.right+gap;x=clamp(x,12,vw-pw-12);y=clamp(rect.top-10,12,vh-ph-12);}
