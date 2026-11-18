@@ -159,7 +159,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #sheet .from{color:var(--mute);font-size:.82rem;margin-bottom:16px}
 #sheet .body{font-family:var(--mincho);font-size:1.12rem;line-height:2;white-space:pre-wrap}
 #sheet .foot{display:flex;justify-content:flex-end;margin-top:18px}
-.set input[type=password]{font:inherit;font-size:.86rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:13em}
+.set input[type=text],.set input[type=password]{font:inherit;font-size:.86rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:13em}
 .goals{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0 0 24px}
 .goals .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--mute)}
 .goals .lab b{font-size:1.05rem;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
@@ -202,7 +202,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .set{max-width:640px}
 .set .row{padding:16px 0}
 .set .row small{display:block;color:var(--mute);font-size:.78rem;margin-top:2px}
-.step{display:flex;align-items:center;gap:6px}
+.step{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .step button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);font-size:1.1rem}
 .step output{min-width:2.4em;text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
 .ghost,.step .ghost{width:auto;height:auto;padding:8px 14px;border:1px solid var(--line);border-radius:999px;font-size:.86rem}
@@ -304,17 +304,17 @@ const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new
   run(store,mode,fn){if(!this.db)return Promise.resolve(fn(null));return new Promise((res,rej)=>{let out;try{const tx=this.db.transaction(store,mode);const rq=fn(tx.objectStore(store));if(rq)rq.onsuccess=()=>{out=rq.result;};tx.oncomplete=()=>res(out);tx.onerror=tx.onabort=()=>rej(tx.error);}catch(e){rej(e);}});},
   get(s,id){return this.run(s,'readonly',o=>o?o.get(id):null).then(v=>this.db?v:this.mem[s].get(id));},
   all(s){return this.run(s,'readonly',o=>o?o.getAll():null).then(v=>this.db?v:[...this.mem[s].values()]);},
-  put(s,v){if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
-  del(s,id){if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
+  put(s,v){if(s!=='content')markDirty();if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
+  del(s,id){if(s!=='content')markDirty();if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
 };
 const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
 if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
-const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}}};
+const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='log'||k==='folders')markDirty();}};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // a book's position as one number: characters from the start of the book
 const bookG=b=>{let g=0;for(let i=0;i<b.pos.ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return g+(b.pos.off||0);};
 const sameBook=(a,b)=>a.title===b.title&&(a.author||'')===(b.author||'')&&a.total===b.total;
-function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}}
+function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;d.dataset.theme=S.theme;d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
@@ -561,7 +561,7 @@ async function exportBackup(){const data=JSON.stringify(await makeBackup()),name
 async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
-  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;await DB.put('books',b);nb++;}else pending.push(p);}
+  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
@@ -570,6 +570,41 @@ async function restoreBackup(data){
   if(data.settings){Object.assign(S,data.settings);saveSettings();applySettings();}
   return {books:nb,pending:pending.length,vocab:(data.vocab||[]).length};
 }
+/* ---------- automatic sync: one file in a private GitHub repo. Books themselves are not uploaded. ---------- */
+const SYNC_FILE='gyokan.json',syncCfg=()=>LS.get('sync',null);
+let syncBusy=false,syncT=null,syncDirty=false,syncApplying=false;
+function markDirty(){if(syncApplying||!syncCfg())return;syncDirty=true;clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
+function gh(opt={}){const c=syncCfg();return fetch(`https://api.github.com/repos/${c.repo}/contents/${SYNC_FILE}`,Object.assign({},opt,{headers:Object.assign({'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},opt.headers||{})}));}
+const b64=str=>{const u=new TextEncoder().encode(str);let t='';for(let i=0;i<u.length;i+=0x8000)t+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(t);};
+const syncFail=e=>{LS.set('syncState',{ok:false,at:Date.now(),msg:String(e&&e.message||e)});};
+async function syncPush(){if(!syncCfg()||syncBusy)return;syncBusy=true;clearTimeout(syncT);
+  try{const data=await makeBackup();let sha=LS.get('syncSha',null);
+    const put=()=>gh({method:'PUT',body:JSON.stringify(Object.assign({message:'sync '+data.when,content:b64(JSON.stringify(data))},sha?{sha}:{}))});
+    let r=await put();
+    if(r.status===409||r.status===422){const m=await gh();sha=m.ok?(await m.json()).sha:null;r=await put();}
+    if(!r.ok)throw new Error(r.status===401||r.status===403?'トークンが無効か、権限が足りません':r.status===404?'リポジトリが見つかりません':'GitHub '+r.status);
+    LS.set('syncSha',(await r.json()).content.sha);LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});syncDirty=false;
+  }catch(e){syncFail(e);throw e;}finally{syncBusy=false;}}
+// take what another device (or an earlier install) saved, if it is newer than what this device last synced
+async function syncPull(){if(!syncCfg())return false;
+  try{const m=await gh();if(m.status===404){LS.set('syncSha',null);return false;}
+    if(!m.ok)throw new Error(m.status===401||m.status===403?'トークンが無効か、権限が足りません':'GitHub '+m.status);
+    LS.set('syncSha',(await m.json()).sha);
+    const r=await gh({headers:{'Accept':'application/vnd.github.raw+json'}});if(!r.ok)throw new Error('GitHub '+r.status);
+    const data=JSON.parse(await r.text());if(!data.when||data.when<=LS.get('syncWhen',''))return false;
+    syncApplying=true;try{await restoreBackup(data);}finally{syncApplying=false;}
+    LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});return true;
+  }catch(e){syncFail(e);throw e;}}
+async function syncNow(){const got=await syncPull();await syncPush();return got;}
+function syncRow(){const c=syncCfg(),st=LS.get('syncState',null),hm=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;};
+  const note='読書位置・単語帳・手書き・ノート・設定を、自分の非公開GitHubリポジトリに自動で保存します。本そのものは送りません。';
+  if(c){const now=h('button',{class:'ghost',onclick:async()=>{now.textContent='同期中…';try{await syncNow();toast('同期しました');}catch(e){toast('同期できません：'+(e&&e.message||e),7000);}renderHome();}},'今すぐ同期');
+    return h('div',{class:'row'},h('span',null,'自動同期（GitHub）',h('small',null,note),h('small',null,st?(st.ok?`最終同期 ${hm(st.at)}　${c.repo}`:`同期できていません：${st.msg}`):'まだ同期していません')),
+      h('div',{class:'step'},now,h('button',{class:'ghost',onclick:()=>{LS.set('sync',null);LS.set('syncSha',null);LS.set('syncWhen','');LS.set('syncState',null);renderHome();}},'解除')));}
+  const repo=h('input',{type:'text',value:'jorddam/gyokan-sync','aria-label':'リポジトリ',autocapitalize:'off',autocomplete:'off'}),tok=h('input',{type:'password',placeholder:'github_pat_…','aria-label':'GitHubトークン',autocomplete:'off'});
+  const save=h('button',{class:'ghost',onclick:async()=>{if(!repo.value.trim()||!tok.value.trim())return;LS.set('sync',{repo:repo.value.trim(),token:tok.value.trim()});save.textContent='確認中…';
+    try{const got=await syncNow();toast(got?'同期しました：保存されていた記録を読み込みました':'同期を始めました');}catch(e){toast('同期できません：'+(e&&e.message||e),7000);}renderHome();}},'保存');
+  return h('div',{class:'row'},h('span',null,'自動同期（GitHub）',h('small',null,note)),h('div',{class:'step'},repo,tok,save));}
 function keyRow(){const has=!!LS.get('key',''),inp=h('input',{type:'password',placeholder:'sk-ant-…','aria-label':'Claude APIキー',autocomplete:'off'});
   const save=h('button',{class:'ghost',onclick:()=>{const v=inp.value.trim();if(!v)return;LS.set('key',v);renderHome();toast('キーを保存しました');}},'保存');
   const test=h('button',{class:'ghost',onclick:async()=>{test.textContent='確認中…';try{toast('AI：'+await askClaude('「接続できました」とだけ返してください。',30),4000);}catch(e){toast('つながりません：'+(e&&e.message||e),8000);}test.textContent='接続を試す';}},'接続を試す');
@@ -580,6 +615,7 @@ function renderSettings(root){
   root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'設定'))),h('div',{class:'set'},
     S.simple?null:h('div',{class:'row'},h('span',null,'一日のページ数',h('small',null,'1ページは600字。読書中の本に順番に割り振ります。月と年の目標もこの数から決まります。')),h('div',{class:'step'},h('button',{'aria-label':'減らす',onclick:()=>bump(-1)},'−'),out,h('button',{'aria-label':'増やす',onclick:()=>bump(1)},'＋'))),
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
+    syncRow(),
     S.simple?null:keyRow(),
     h('div',{class:'row'},h('span',null,'文字・紙の色・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
 }
@@ -698,7 +734,7 @@ async function nudge(plan){
   else el.append(h('span',null,'今日の読書はこのページで完了です'),h('button',{onclick:closeBook},'閉じる'));
   el.hidden=false;
 }
-function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();
+function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();if(syncDirty)syncPush().catch(()=>{});
   // AI summary: only if this sitting opted in, and only once, on closing
   let sum=null;if(R.ai&&R.book&&!S.simple){const endG=R.before[R.ch]+(R.page<R.pages.length-1?pageOffset(R.page+1):R.text.length);if(endG-R.ai.start>=300)sum={title:R.book.title,text:sessionText(R.ai.start,endG)};}
   readerEl.hidden=true;$('#home').hidden=false;flow.textContent='';for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];R.book=null;R.ink=null;R.ai=null;ictx.clearRect(0,0,innerWidth,innerHeight);renderHome();
@@ -752,7 +788,7 @@ $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
 $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
 let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{sizeInk();relayout();},160);});
-addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden)saveNow();});
+addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden){saveNow();if(syncDirty)syncPush().catch(()=>{});}});
 
 /* ---------- handwriting: each stroke is tied to a character and stored in font-size units,
    so it follows the text when the page breaks or the font size change ---------- */
@@ -962,6 +998,7 @@ function showDict(s,e,kids){
 
 /* ---------- start ---------- */
 (async()=>{applySettings();await DB.open();await renderHome();
+  if(syncCfg())syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});
   try{if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
   window.__ready=true;})();
 </script>
