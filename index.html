@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="shiro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="行間">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAABq0lEQVR42u3dsQ2DMBBA0RB5GgbIFvRZhI4NWIRZMlW6NLEosJDP9nsVNCd0+gI6T/OyPSDnaQWIA3EgDsSBOBAH4kAciANxgDgQB+JAHIgDcSAOxIE4EAeIA3EgDsSBOBAH4kAc9CaFeprPsf6uX+/dTG+OzHb+b80cN47sOgp3NPLMfuI4WcTlHY080w8p4kAciANxIA7EgThAHIgDcSAOxIE4EAfiQByIA8SBOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByXnRzdHuRUd3GE60MZ4sinoIzqUqinEYQ3B+JAHIgDcYA4EAfiQByIA3EgDsSBOBAHiANxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBAH4gBxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBBHdHecct3KTHHUOeW6lZniqHPKdSszy03zsvm44ocUcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQBx05Qvjz1hqOo4ADQAAAABJRU5ErkJggg==">
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAABq0lEQVR42u3dsQ2DMBBA0RB5GgbIFvRZhI4NWIRZMlW6NLEosJDP9nsVNCd0+gI6T/OyPSDnaQWIA3EgDsSBOBAH4kAciANxgDgQB+JAHIgDcSAOxIE4EAeIA3EgDsSBOBAH4kAc9CaFeprPsf6uX+/dTG+OzHb+b80cN47sOgp3NPLMfuI4WcTlHY080w8p4kAciANxIA7EgThAHIgDcSAOxIE4EAfiQByIA8SBOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByXnRzdHuRUd3GE60MZ4sinoIzqUqinEYQ3B+JAHIgDcYA4EAfiQByIA3EgDsSBOBAHiANxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBAH4gBxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBBHdHecct3KTHHUOeW6lZniqHPKdSszy03zsvm44ocUcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQBx05Qvjz1hqOo4ADQAAAABJRU5ErkJggg==">
+<title>行間 Gyokan</title>
+<style>
+:root{
+  --bg:#eceeea; --surface:#f9faf7; --ink:#1b211f; --mute:#69726e; --line:#d3d8d1; --accent:#2a4d7c; --on-accent:#fff;
+  --paper:#fcfcf9; --text:#1c1c1a;
+  --mincho:"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif CJK JP","Noto Serif JP",serif;
+  --gothic:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans CJK JP","Noto Sans JP",sans-serif;
+  --read-font:var(--mincho); --fs:20px; --L:38px; --inl:600px; --blk:600px;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+}
+[data-theme=kinari]{--paper:#efe7d3; --text:#3a3023}
+[data-theme=sumi]{--bg:#121514; --surface:#1b1f1e; --ink:#dcdad3; --mute:#8a918d; --line:#2c3230; --accent:#9db9df; --on-accent:#10161f; --paper:#161918; --text:#c9c6bd}
+[data-font=gothic]{--read-font:var(--gothic)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--gothic);font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+[hidden]{display:none!important}
+
+/* ---------- home ---------- */
+#home{min-height:100%;padding:calc(var(--sat) + 28px) calc(var(--sar) + clamp(20px,5vw,56px)) calc(var(--sab) + 56px) calc(var(--sal) + clamp(20px,5vw,56px));max-width:1240px;margin:0 auto}
+.bar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px}
+.mark{font-family:var(--mincho);font-size:1.7rem;font-weight:600;letter-spacing:.18em;margin:0}
+.add{background:var(--accent);color:var(--on-accent);padding:9px 18px;border-radius:999px;font-size:.9rem;font-weight:600}
+.hero{display:block;width:100%;position:relative;height:clamp(250px,38vh,340px);background:var(--paper);color:var(--text);border-radius:6px;overflow:hidden;text-align:start;box-shadow:0 1px 0 var(--line),0 18px 40px -28px rgba(20,30,28,.45)}
+.hero-page{position:absolute;inset:0;padding:30px 38px 30px 30px;writing-mode:vertical-rl;font-family:var(--mincho);overflow:hidden;
+  -webkit-mask-image:linear-gradient(to left,#000 38%,transparent 88%);mask-image:linear-gradient(to left,#000 38%,transparent 88%)}
+.hero-title{font-size:1.55rem;font-weight:600;line-height:1.5;margin:0 0 0 .5em;max-height:100%;overflow:hidden}
+.hero-author{font-size:.85rem;margin:0 0 0 2.2em;opacity:.65;padding-top:2.6em}
+.hero-text{font-size:1.02rem;line-height:2;margin:0;opacity:.82;height:100%;text-align:justify;line-break:strict}
+.hero-go{position:absolute;left:30px;bottom:26px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;font-family:var(--gothic)}
+.hero-pct{font-size:.8rem;opacity:.7;font-variant-numeric:tabular-nums}
+.hero-btn{background:var(--accent);color:var(--on-accent);padding:10px 20px;border-radius:999px;font-size:.92rem;font-weight:600}
+.shelf-head{display:flex;align-items:baseline;gap:12px;margin:40px 0 18px}
+.shelf-head h2{font-family:var(--mincho);font-size:1.15rem;font-weight:600;margin:0;letter-spacing:.1em}
+.shelf-head span{font-size:.8rem;color:var(--mute)}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:34px 26px;list-style:none;margin:0;padding:0}
+.book{position:relative;min-width:0}
+.cover{display:block;width:100%;aspect-ratio:5/7;border-radius:3px;overflow:hidden;background:var(--paper);box-shadow:0 1px 2px rgba(20,30,28,.18),0 14px 22px -14px rgba(20,30,28,.5);position:relative}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.cover .plain{position:absolute;inset:0;padding:16px 22px 16px 12px;writing-mode:vertical-rl;font-family:var(--mincho);font-weight:600;font-size:1rem;line-height:1.45;color:var(--text);border-right:7px solid var(--accent);overflow:hidden;text-align:start}
+.prog{height:2px;background:var(--line);margin-top:9px;border-radius:2px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent)}
+.meta{display:flex;gap:6px;align-items:flex-start;margin-top:8px}
+.meta div{flex:1;min-width:0}
+.b-title{font-size:.84rem;font-weight:600;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.b-author{font-size:.75rem;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.more{color:var(--mute);width:28px;height:28px;border-radius:50%;font-size:1.1rem;line-height:1;flex:none;margin-top:-3px}
+.menu{position:absolute;right:0;bottom:-34px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 12px 30px -12px rgba(0,0,0,.4);padding:4px}
+.menu button{display:block;padding:8px 14px;font-size:.85rem;white-space:nowrap;border-radius:5px;color:#a8342f}
+[data-theme=sumi] .menu button{color:#e08b84}
+.empty{margin:12vh auto 0;max-width:30rem;text-align:center}
+.empty p.big{font-family:var(--mincho);font-size:1.5rem;font-weight:600;margin:0 0 10px;letter-spacing:.06em}
+.empty p{color:var(--mute);margin:0 0 26px}
+.toast{position:fixed;left:50%;bottom:calc(var(--sab) + 26px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:.88rem;z-index:50;max-width:88vw}
+body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
+
+/* ---------- reader ---------- */
+#reader{position:fixed;inset:0;background:var(--paper);color:var(--text);overflow:hidden;touch-action:none}
+#stage{position:absolute;inset:0;display:grid;place-items:center;padding:var(--sat) var(--sar) var(--sab) var(--sal)}
+#viewport{position:relative;overflow:hidden}
+#flow{position:absolute;top:0;font-family:var(--read-font);font-size:var(--fs);line-height:var(--L);color:var(--text);text-align:justify;line-break:strict;overflow-wrap:anywhere;-webkit-user-select:none;user-select:none}
+#flow.v{right:0;height:100%;writing-mode:vertical-rl;text-orientation:mixed}
+#flow.h{left:0;width:100%}
+#flow *{line-height:inherit;margin:0;padding:0;font-size:inherit;font-weight:inherit;font-style:normal;text-indent:0;border:0}
+#flow rt{font-size:.45em;font-weight:400;line-height:1}
+#flow h1,#flow h2,#flow h3{font-size:1.2em;font-weight:600;margin-block:var(--L)}
+#flow h4,#flow h5,#flow h6,#flow b,#flow strong,#flow .b-bold{font-weight:600}
+#flow hr{block-size:var(--L)}
+#flow blockquote{margin-inline-start:2em}
+#flow li{margin-inline-start:1.5em}
+#flow sup,#flow sub{font-size:.6em}
+#flow img{max-inline-size:var(--inl);max-block-size:var(--blk)}
+#flow img.x-gaiji{inline-size:1em;block-size:1em}
+#flow .b-tcy{-webkit-text-combine:horizontal;text-combine-upright:all}
+#flow .b-upright{text-orientation:upright}
+#flow .b-sideways{text-orientation:sideways}
+#flow .b-em-sesame,#flow .b-em-dot,#flow .b-em-sesame-open{-webkit-text-emphasis:sesame;text-emphasis:sesame}
+#flow .b-gfont{font-family:var(--gothic)}
+#flow .b-mfont{font-family:var(--mincho)}
+#flow .b-align-end,#flow .b-align-right{text-align:end}
+#flow .b-align-center{text-align:center}
+#foot{position:absolute;left:0;right:0;bottom:calc(var(--sab) + 12px);display:flex;justify-content:space-between;padding:0 calc(var(--sar) + 28px) 0 calc(var(--sal) + 28px);font-size:.72rem;color:var(--text);opacity:.42;pointer-events:none;font-variant-numeric:tabular-nums}
+#footCh{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
+.chrome{position:absolute;left:0;right:0;background:color-mix(in srgb,var(--paper) 94%,var(--text));color:var(--text);display:flex;align-items:center;gap:6px;transition:opacity .16s,transform .16s;z-index:10}
+#rtop{top:0;padding:calc(var(--sat) + 8px) calc(var(--sar) + 14px) 8px calc(var(--sal) + 14px);border-bottom:1px solid color-mix(in srgb,var(--text) 14%,transparent)}
+#rbot{bottom:0;padding:12px calc(var(--sar) + 28px) calc(var(--sab) + 14px) calc(var(--sal) + 28px);border-top:1px solid color-mix(in srgb,var(--text) 14%,transparent);flex-direction:column;align-items:stretch;gap:6px}
+#reader:not(.ui) .chrome{opacity:0;pointer-events:none}
+#reader:not(.ui) #rtop{transform:translateY(-8px)}
+#reader:not(.ui) #rbot{transform:translateY(8px)}
+#reader.ui #foot{opacity:0}
+.chrome button{padding:9px 13px;border-radius:8px;font-size:.92rem;min-height:40px}
+#rtitle{flex:1;text-align:center;font-family:var(--mincho);font-weight:600;font-size:.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+#scrub{width:100%;accent-color:var(--accent);margin:0;height:28px}
+#scrubInfo{display:flex;justify-content:space-between;gap:16px;font-size:.78rem;opacity:.75;font-variant-numeric:tabular-nums}
+#scrubInfo span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scrubInfo span:last-child{white-space:nowrap}
+.pop{position:absolute;top:calc(var(--sat) + 62px);right:calc(var(--sar) + 14px);width:min(320px,92vw);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -20px rgba(0,0,0,.5);padding:8px 16px;z-index:20}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.row:last-child{border-bottom:0}
+.seg{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:2px}
+.seg button{padding:6px 12px;border-radius:7px;font-size:.86rem;min-width:44px}
+.seg button[aria-pressed=true]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.18);font-weight:600}
+.seg .sw{width:44px;height:30px;padding:0;border:1px solid var(--line)}
+.seg .sw[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px}
+.sheet{position:absolute;top:0;bottom:0;right:0;width:min(380px,88vw);background:var(--surface);color:var(--ink);border-left:1px solid var(--line);box-shadow:-24px 0 50px -30px rgba(0,0,0,.5);z-index:20;display:flex;flex-direction:column;padding:calc(var(--sat) + 18px) 0 var(--sab)}
+.sheet h3{font-family:var(--mincho);font-size:1.05rem;margin:0 22px 10px;letter-spacing:.1em}
+.sheet ol{list-style:none;margin:0;padding:0 10px 20px;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.sheet li button{display:block;width:100%;text-align:start;padding:11px 12px;border-radius:8px;font-size:.92rem;line-height:1.45}
+.sheet li button[aria-current=true]{color:var(--accent);font-weight:600;background:var(--bg)}
+::highlight(gy-lookup){background-color:color-mix(in srgb,var(--accent) 26%,transparent)}
+#dict{position:absolute;left:0;top:0;width:min(380px,84vw);max-height:min(62vh,520px);overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -18px rgba(0,0,0,.55);padding:6px 18px 10px;z-index:15;font-size:.92rem;line-height:1.55}
+.d-from{font-size:.78rem;color:var(--mute);padding-top:8px}
+.d-entry{padding:10px 0 8px;border-bottom:1px solid var(--line)}
+.d-entry:last-child{border-bottom:0}
+.d-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px}
+.d-word{font-family:var(--mincho);font-size:1.5rem;font-weight:600;line-height:1.3}
+.d-read{font-size:.95rem;color:var(--mute)}
+.d-tag{font-size:.7rem;color:var(--accent);border:1px solid currentColor;border-radius:4px;padding:0 5px;line-height:1.5}
+.d-entry ol{margin:6px 0 0;padding-left:1.4em}
+.d-entry li{margin:3px 0}
+.d-entry li::marker{color:var(--mute);font-size:.8em}
+.d-pos{display:block;font-size:.74rem;color:var(--mute)}
+.d-part{font-size:.78rem;color:var(--mute);padding-top:10px}
+.d-note{padding:12px 0;color:var(--mute)}
+@media (prefers-reduced-motion:reduce){.chrome{transition:none}}
+</style>
+</head>
+<body>
+<main id="home">
+  <div class="bar">
+    <h1 class="mark">行間</h1>
+    <button class="add" id="addBtn">本を追加</button>
+  </div>
+  <div id="heroSlot"></div>
+  <div id="shelfSlot"></div>
+  <input type="file" id="file" accept=".epub,application/epub+zip" multiple hidden>
+</main>
+
+<section id="reader" hidden aria-label="読書画面">
+  <div id="stage"><div id="viewport"><div id="flow" class="v"></div></div></div>
+  <div id="foot"><span id="footCh"></span><span id="footPct"></span></div>
+  <header id="rtop" class="chrome">
+    <button id="back">‹ 本棚</button>
+    <div id="rtitle"></div>
+    <button id="tocBtn">目次</button>
+    <button id="aaBtn">表示</button>
+  </header>
+  <footer id="rbot" class="chrome">
+    <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="読書位置">
+    <div id="scrubInfo"><span id="siCh"></span><span id="siLeft"></span></div>
+  </footer>
+  <aside id="toc" class="sheet" hidden><h3>目次</h3><ol id="tocList"></ol></aside>
+  <div id="dict" hidden role="dialog" aria-label="辞書"></div>
+  <div id="aa" class="pop" hidden>
+    <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
+    <div class="row"><span>紙の色</span><div class="seg" id="segTheme">
+      <button class="sw" data-theme-v="shiro" style="background:#fcfcf9" aria-label="白"></button>
+      <button class="sw" data-theme-v="kinari" style="background:#efe7d3" aria-label="生成り"></button>
+      <button class="sw" data-theme-v="sumi" style="background:#161918" aria-label="墨"></button></div></div>
+    <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
+    <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
+  </div>
+</section>
+
+<script>
+'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in attrs||{}){const v=attrs[k];if(k==='class')e.className=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!=null&&v!==false)e.setAttribute(k,v);}for(const c of kids)if(c!=null)e.append(c);return e;};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const PAGE_CHARS=600; // one "page" = 600 characters, independent of font size
+
+/* ---------- storage ---------- */
+const DB={db:null,mem:{books:new Map(),content:new Map()},
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',1);r.onupgradeneeded=()=>{r.result.createObjectStore('books',{keyPath:'id'});r.result.createObjectStore('content',{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
+    try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{});}catch(e){}},
+  run(store,mode,fn){if(!this.db)return Promise.resolve(fn(null));return new Promise((res,rej)=>{let out;try{const tx=this.db.transaction(store,mode);const rq=fn(tx.objectStore(store));if(rq)rq.onsuccess=()=>{out=rq.result;};tx.oncomplete=()=>res(out);tx.onerror=tx.onabort=()=>rej(tx.error);}catch(e){rej(e);}});},
+  get(s,id){return this.run(s,'readonly',o=>o?o.get(id):null).then(v=>this.db?v:this.mem[s].get(id));},
+  all(s){return this.run(s,'readonly',o=>o?o.getAll():null).then(v=>this.db?v:[...this.mem[s].values()]);},
+  put(s,v){if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
+  del(s,id){if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
+};
+const S=Object.assign({size:20,theme:null,font:'mincho'},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
+if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
+function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}}
+function applySettings(){const d=document.documentElement;d.dataset.theme=S.theme;d.dataset.font=S.font;
+  for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
+  for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
+
+/* ---------- zip + epub ---------- */
+async function unzip(buf){
+  const dv=new DataView(buf),u8=new Uint8Array(buf);let e=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-66000);i--)if(dv.getUint32(i,true)===0x06054b50){e=i;break;}
+  if(e<0)throw new Error('EPUBとして読めないファイルです');
+  const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true);const td=new TextDecoder(),files=new Map(),lower=new Map();
+  for(let i=0;i<n&&p+46<=u8.length;i++){if(dv.getUint32(p,true)!==0x02014b50)break;
+    const method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),off=dv.getUint32(p+42,true);
+    const name=td.decode(u8.subarray(p+46,p+46+nl));files.set(name,{method,csize,off});lower.set(name.toLowerCase(),name);p+=46+nl+xl+cl;}
+  const find=name=>files.get(name)||files.get(lower.get(String(name).toLowerCase()));
+  return {has:n=>!!find(n),
+    async bytes(name){const f=find(name);if(!f)return null;const nl=dv.getUint16(f.off+26,true),xl=dv.getUint16(f.off+28,true),st=f.off+30+nl+xl,raw=u8.subarray(st,st+f.csize);
+      if(f.method===0)return raw.slice();if(f.method!==8)throw new Error('未対応の圧縮形式です');
+      if(typeof DecompressionStream==='undefined')throw new Error('このブラウザでは展開できません（iPadOS 16.4以降が必要）');
+      return new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());},
+    async text(name){const b=await this.bytes(name);return b?new TextDecoder().decode(b):null;}};
+}
+const dirOf=p=>p.includes('/')?p.slice(0,p.lastIndexOf('/')+1):'';
+function resolvePath(base,rel){rel=rel.split('#')[0];try{rel=decodeURIComponent(rel);}catch(e){}
+  if(rel.startsWith('/'))return rel.slice(1);const out=[];for(const s of (dirOf(base)+rel).split('/')){if(s==='..')out.pop();else if(s!=='.'&&s!=='')out.push(s);}return out.join('/');}
+const parseXml=t=>new DOMParser().parseFromString(t,'application/xml');
+const tags=(d,n)=>[...d.getElementsByTagNameNS('*',n)];
+const KEEP=new Set('p div span ruby rt rb br h1 h2 h3 h4 h5 h6 em strong b i u s sup sub blockquote hr ul ol li section article aside figure figcaption a small pre code dl dt dd table thead tbody tr td th'.split(' '));
+const DROP=new Set('script style head link meta title rp iframe object embed noscript audio video nav form input button textarea select'.split(' '));
+function sanitize(node,out,base){
+  for(const c of node.childNodes){
+    if(c.nodeType===3){let t=c.nodeValue.replace(/[\t\n\r ]+/g,' ');if(t===' '&&/[\n\r]/.test(c.nodeValue))continue;if(t)out.append(t);continue;}
+    if(c.nodeType!==1)continue;const t=c.localName.toLowerCase();if(DROP.has(t))continue;
+    if(t==='svg'){const im=tags(c,'image')[0];const href=im&&(im.getAttribute('xlink:href')||im.getAttributeNS('http://www.w3.org/1999/xlink','href')||im.getAttribute('href'));
+      if(href){const e=document.createElement('img');e.setAttribute('data-res',resolvePath(base,href));out.append(e);}continue;}
+    if(t==='img'){const src=c.getAttribute('src');if(src&&!src.startsWith('data:')){const e=document.createElement('img');e.setAttribute('data-res',resolvePath(base,src));if(/gaiji/i.test(c.getAttribute('class')||''))e.className='x-gaiji';out.append(e);}continue;}
+    if(!KEEP.has(t)){sanitize(c,out,base);continue;}
+    const e=document.createElement(t==='a'?'span':t);const cls=(c.getAttribute('class')||'').trim();
+    if(cls)e.className=cls.split(/\s+/).map(x=>'b-'+x).join(' ');const id=c.getAttribute('id');if(id)e.setAttribute('data-id',id);
+    sanitize(c,e,base);out.append(e);}
+}
+function plainText(root){let s='';const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT});for(let n;n=w.nextNode();)s+=n.nodeValue;return s;}
+async function thumb(bytes,type){try{const bmp=await createImageBitmap(new Blob([bytes],{type}));const w=Math.min(420,bmp.width),ht=Math.round(bmp.height*w/bmp.width);const c=document.createElement('canvas');c.width=w;c.height=ht;c.getContext('2d').drawImage(bmp,0,0,w,ht);return c.toDataURL('image/jpeg',.82);}catch(e){return null;}}
+const MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml'};
+
+async function importEpub(file){
+  const zip=await unzip(await file.arrayBuffer());
+  const cx=await zip.text('META-INF/container.xml');if(!cx)throw new Error('EPUBではないようです');
+  const opfPath=tags(parseXml(cx),'rootfile')[0]?.getAttribute('full-path');
+  const opfText=opfPath&&await zip.text(opfPath);if(!opfText)throw new Error('本の情報が見つかりません');
+  const opf=parseXml(opfText);const txt=n=>(tags(opf,n)[0]?.textContent||'').trim();
+  const title=txt('title')||file.name.replace(/\.epub$/i,''),author=txt('creator'),lang=txt('language').toLowerCase();
+  const items=new Map();for(const it of tags(opf,'item'))items.set(it.getAttribute('id'),{path:resolvePath(opfPath,it.getAttribute('href')||''),type:it.getAttribute('media-type')||'',props:it.getAttribute('properties')||''});
+  const typeOf=p=>{for(const it of items.values())if(it.path===p)return it.type;return MIME[p.split('.').pop().toLowerCase()]||'application/octet-stream';};
+  const spineEl=tags(opf,'spine')[0];const ppd=spineEl?.getAttribute('page-progression-direction');
+  const spine=tags(opf,'itemref').map(r=>items.get(r.getAttribute('idref'))).filter(Boolean);
+  if(!spine.length)throw new Error('本文が見つかりません');
+  // chapters
+  const chapters=[],htmls=[],res={},pathIdx=new Map();let firstText='';
+  for(const it of spine){const raw=await zip.text(it.path);if(!raw)continue;
+    let doc=new DOMParser().parseFromString(raw,'application/xhtml+xml');if(doc.getElementsByTagName('parsererror').length)doc=new DOMParser().parseFromString(raw,'text/html');
+    const body=doc.body||tags(doc,'body')[0];if(!body)continue;
+    const box=document.createElement('div');sanitize(body,box,it.path);
+    const text=plainText(box),imgs=[...box.querySelectorAll('img')];
+    if(!text.trim()&&!imgs.length)continue;
+    for(const im of imgs){const p=im.getAttribute('data-res');if(res[p])continue;const b=await zip.bytes(p);if(b)res[p]={type:typeOf(p),buf:b.buffer};else im.remove();}
+    pathIdx.set(it.path,chapters.length);chapters.push({title:'',chars:text.length});htmls.push(box.innerHTML);
+    if(!firstText&&text.trim().length>120)firstText=text.trim().slice(0,260);}
+  if(!chapters.length)throw new Error('本文が見つかりません');
+  // table of contents
+  const toc=[];const addToc=(label,href,base)=>{if(!href)return;const ch=pathIdx.get(resolvePath(base,href));if(ch==null)return;const frag=href.includes('#')?href.split('#')[1]:'';toc.push({title:label.replace(/\s+/g,' ').trim(),ch,frag});};
+  const navItem=[...items.values()].find(i=>/\bnav\b/.test(i.props));
+  if(navItem){const nt=await zip.text(navItem.path);if(nt){let nd=new DOMParser().parseFromString(nt,'application/xhtml+xml');if(nd.getElementsByTagName('parsererror').length)nd=new DOMParser().parseFromString(nt,'text/html');
+    const navs=tags(nd,'nav');const nav=navs.find(n=>/toc/.test(n.getAttribute('epub:type')||n.getAttributeNS('http://www.idpf.org/2007/ops','type')||''))||navs[0];
+    if(nav)for(const a of tags(nav,'a'))addToc(a.textContent,a.getAttribute('href'),navItem.path);}}
+  if(!toc.length){const ncx=[...items.values()].find(i=>i.type==='application/x-dtbncx+xml');const nt=ncx&&await zip.text(ncx.path);
+    if(nt)for(const np of tags(parseXml(nt),'navPoint'))addToc(tags(np,'text')[0]?.textContent||'',tags(np,'content')[0]?.getAttribute('src'),ncx.path);}
+  for(const t of toc)if(!chapters[t.ch].title)chapters[t.ch].title=t.title;
+  // cover
+  let cover=null;const coverId=tags(opf,'meta').find(m=>m.getAttribute('name')==='cover')?.getAttribute('content');
+  const coverItem=[...items.values()].find(i=>/cover-image/.test(i.props))||items.get(coverId);
+  if(coverItem&&/^image\//.test(coverItem.type||typeOf(coverItem.path))){const b=await zip.bytes(coverItem.path);if(b)cover=await thumb(b,coverItem.type||typeOf(coverItem.path));}
+  const id='b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const book={id,title,author,cover,added:Date.now(),opened:0,total:chapters.reduce((a,c)=>a+c.chars,0),chapters,toc,pos:{ch:0,off:0},progress:0,excerpt:firstText,vertical:ppd?ppd==='rtl':(lang.startsWith('ja')||!lang)};
+  await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
+}
+
+/* ---------- home ---------- */
+let toastT;function toast(msg,ms=2600){let t=$('.toast');if(!t){t=h('div',{class:'toast',role:'status'});document.body.append(t);}t.textContent=msg;t.hidden=false;clearTimeout(toastT);if(ms)toastT=setTimeout(()=>{t.hidden=true;},ms);}
+async function addFiles(files){files=[...files].filter(f=>/\.epub$/i.test(f.name)||f.type==='application/epub+zip');if(!files.length){toast('EPUBファイルを選んでください');return;}
+  let ok=0;for(let i=0;i<files.length;i++){toast(`取り込み中 ${i+1}/${files.length}`,0);try{await importEpub(files[i]);ok++;}catch(e){console.error(e);toast(`${files[i].name}：${e.message||'読み込めませんでした'}`,4200);await new Promise(r=>setTimeout(r,1800));}}
+  if(ok)toast(`${ok}冊を本棚に追加しました`);renderHome();}
+const pct=b=>Math.round((b.progress||0)*100);
+async function renderHome(){
+  const books=(await DB.all('books')).sort((a,b)=>(b.opened||b.added)-(a.opened||a.added));
+  const hero=$('#heroSlot'),shelf=$('#shelfSlot');hero.textContent='';shelf.textContent='';
+  if(!books.length){shelf.append(h('div',{class:'empty'},h('p',{class:'big'},'本棚は空です'),h('p',null,'EPUBを追加すると、ここに並びます。'),h('button',{class:'add',onclick:()=>$('#file').click()},'EPUBを追加')));$('#addBtn').hidden=true;return;}
+  $('#addBtn').hidden=false;
+  const cur=books[0];
+  hero.append(h('button',{class:'hero',onclick:()=>openBook(cur.id),'aria-label':`${cur.title}の続きを読む`},
+    h('div',{class:'hero-page'},h('p',{class:'hero-title'},cur.title),cur.author?h('p',{class:'hero-author'},cur.author):null,h('p',{class:'hero-text'},(cur.excerpt||'').replace(/^\s+/,''))),
+    h('div',{class:'hero-go'},h('span',{class:'hero-pct'},cur.opened?`${pct(cur)}% まで読みました`:'まだ開いていません'),h('span',{class:'hero-btn'},cur.opened?'続きを読む':'読みはじめる'))));
+  const list=h('ul',{class:'shelf'});
+  for(const b of books){
+    const li=h('li',{class:'book'});
+    const cover=h('button',{class:'cover',onclick:()=>openBook(b.id),'aria-label':`${b.title}を開く`},b.cover?h('img',{src:b.cover,alt:''}):h('span',{class:'plain'},b.title));
+    const more=h('button',{class:'more','aria-label':`${b.title}のメニュー`,onclick:ev=>{ev.stopPropagation();const open=li.querySelector('.menu');document.querySelectorAll('.menu').forEach(m=>m.remove());if(open)return;
+      let armed=false;const del=h('button',{onclick:async e2=>{e2.stopPropagation();if(!armed){armed=true;del.textContent='もう一度押すと削除します';return;}await DB.del('books',b.id);await DB.del('content',b.id);toast('本棚から削除しました');renderHome();}},'本棚から削除');
+      li.append(h('div',{class:'menu'},del));}},'⋯');
+    li.append(cover,h('div',{class:'prog'},h('i',{style:`width:${pct(b)}%`})),h('div',{class:'meta'},h('div',null,h('div',{class:'b-title'},b.title),h('div',{class:'b-author'},b.author||'')),more));
+    list.append(li);}
+  shelf.append(h('div',{class:'shelf-head'},h('h2',null,'本棚'),h('span',null,`${books.length}冊`)),list);
+}
+document.addEventListener('click',()=>document.querySelectorAll('.menu').forEach(m=>m.remove()));
+$('#addBtn').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{addFiles(e.target.files);e.target.value='';};
+addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('drag');});
+addEventListener('dragleave',()=>document.body.classList.remove('drag'));
+addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('drag');if(e.dataTransfer&&e.dataTransfer.files.length&&$('#reader').hidden)addFiles(e.dataTransfer.files);});
+
+/* ---------- reader ---------- */
+const flow=$('#flow'),viewport=$('#viewport'),readerEl=$('#reader');
+const R={book:null,content:null,ch:0,page:0,pages:[],lines:[],nodes:[],text:'',urls:[],busy:false,L:38,B:0,before:[]};
+const rg=document.createRange();
+const BLOCKS='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,dt,dd,figcaption,pre,section,article,aside,figure';
+const isV=()=>R.book.vertical;
+function geometry(){
+  const fs=S.size,L=Math.round(fs*1.9),v=isV(),cs=getComputedStyle(document.documentElement);
+  const px=n=>parseFloat(cs.getPropertyValue(n))||0;
+  const vw=innerWidth-px('--sal')-px('--sar'),vh=innerHeight-px('--sat')-px('--sab');
+  const padX=clamp(vw*.06,26,76),padY=clamp(vh*.075,44,70);let W,H;
+  if(v){H=Math.min(vh-2*padY,fs*42);W=Math.max(L,Math.floor((vw-2*padX)/L)*L);}
+  else{W=Math.min(vw-2*padX,fs*36);H=Math.max(L,Math.floor((vh-2*padY)/L)*L);}
+  R.L=L;R.B=v?W:H;
+  const d=document.documentElement.style;d.setProperty('--fs',fs+'px');d.setProperty('--L',L+'px');d.setProperty('--inl',(v?H:W)+'px');d.setProperty('--blk',(v?W:H)+'px');
+  viewport.style.width=W+'px';viewport.style.height=H+'px';flow.className=v?'v':'h';
+}
+function coords(fr,r){return isV()?[fr.right-r.right,fr.right-r.left]:[r.top-fr.top,r.bottom-fr.top];}
+function measure(){
+  flow.style.transform='none';viewport.style.clipPath='none';
+  const fr=flow.getBoundingClientRect(),L=R.L,half=L/2,items=[],nodes=[],breaks=[];let off=0,text='',blk=null;
+  const w=document.createTreeWalker(flow,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:(n.localName==='img'?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP)):NodeFilter.FILTER_ACCEPT});
+  for(let n;n=w.nextNode();){
+    if(n.nodeType===1){if(n.classList.contains('x-gaiji'))continue;const [a,b]=coords(fr,n.getBoundingClientRect());if(b-a>1)items.push({a,b,off});continue;}
+    const len=n.nodeValue.length;nodes.push({n,off,len});text+=n.nodeValue;
+    const bl=n.parentElement.closest(BLOCKS);if(bl!==blk){blk=bl;if(off)breaks.push(off);}
+    if(n.nodeValue.trim()){rg.selectNodeContents(n);for(const r of rg.getClientRects()){if(r.width<1||r.height<1)continue;const [a,b]=coords(fr,r),c=(a+b)/2;items.push({a:c-half,b:c+half,off});}}
+    off+=len;}
+  items.sort((x,y)=>x.a-y.a||x.off-y.off);
+  const lines=[];for(const it of items){const last=lines[lines.length-1];if(last&&it.a<last.b-L*.25){if(it.b>last.b)last.b=it.b;if(it.off<last.off)last.off=it.off;}else lines.push({a:it.a,b:it.b,off:it.off});}
+  if(!lines.length)lines.push({a:0,b:L,off:0});
+  const pages=[],B=R.B;let i=0;
+  while(i<lines.length){const s=Math.max(0,lines[i].a);let j=i;while(j+1<lines.length&&lines[j+1].b<=s+B+.5)j++;
+    const e=j+1<lines.length?Math.min(s+B,Math.max(lines[j].b,(lines[j].b+lines[j+1].a)/2)):Math.min(s+B,Math.max(lines[j].b,s+1));
+    pages.push({s,e,first:i});i=j+1;}
+  if(text!==R.text)R.words=null;
+  R.lines=lines;R.pages=pages;R.nodes=nodes;R.text=text;R.breaks=breaks;
+}
+function charPos(nd,m){rg.setStart(nd.n,m);rg.setEnd(nd.n,Math.min(nd.len,m+1));const r=rg.getBoundingClientRect();if(r.width<1||r.height<1)return null;const [a,b]=coords(flow.getBoundingClientRect(),r);return (a+b)/2;}
+function nodeAt(g){const N=R.nodes;let lo=0,hi=N.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(N[mid].off<=g)lo=mid;else hi=mid-1;}return lo;}
+// centre of the character at chapter offset g (or of the next visible character)
+function centerAt(g){const N=R.nodes;if(!N.length)return null;let i=nodeAt(g),m=Math.max(0,g-N[i].off);for(let t=0;t<60&&i<N.length;t++){const nd=N[i];if(m<nd.len){const c=charPos(nd,m);if(c!=null)return c;m++;}else{i++;m=0;}}return null;}
+// first chapter offset whose character sits at or beyond a block coordinate
+function firstAtOrAfter(edge){let lo=0,hi=Math.max(0,R.text.length-1);while(lo<hi){const mid=(lo+hi)>>1,c=centerAt(mid);if(c==null||c>=edge)hi=mid;else lo=mid+1;}return lo;}
+function pageOffset(k){return k<=0?0:firstAtOrAfter(R.pages[k].s-1);}
+function pageOfCoord(c){const P=R.pages;for(let k=0;k<P.length;k++)if(c<P[k].e-.5)return k;return P.length-1;}
+function pageOfOffset(off){if(off<=0)return 0;const c=centerAt(off);return c==null?R.pages.length-1:pageOfCoord(c);}
+function show(k,save=true){
+  closeDict();R.page=k=clamp(k,0,R.pages.length-1);const p=R.pages[k],v=isV(),pad=Math.min(3,p.s),cut=Math.max(0,R.B-(p.e-p.s)),c2=cut/2,ws=p.s-pad-c2;
+  // window shows [s-pad, e-pad], centred; the pad keeps furigana of the neighbouring line out of view
+  flow.style.transform=v?`translateX(${ws}px)`:`translateY(${-ws}px)`;
+  viewport.style.clipPath=v?`inset(0 ${c2}px 0 ${c2}px)`:`inset(${c2}px 0 ${c2}px 0)`;
+  hud();if(save)saveSoon();
+}
+function currentOff(){return pageOffset(R.page);}
+function hud(){
+  const b=R.book,off=currentOff(),g=R.before[R.ch]+off,last=R.ch===b.chapters.length-1&&R.page===R.pages.length-1;
+  const frac=last?1:(b.total?g/b.total:0);R.frac=frac;R.g=g;
+  let title='';for(let i=R.ch;i>=0&&!title;i--)title=b.chapters[i].title;
+  $('#footCh').textContent=title;$('#footPct').textContent=Math.round(frac*100)+'%';
+  $('#siCh').textContent=title||b.title;$('#siLeft').textContent=last?'読了':`残り ${Math.max(1,Math.ceil((b.total-g)/PAGE_CHARS))} ページ`;
+  const sc=$('#scrub');sc.max=b.total;sc.value=g;sc.style.direction=isV()?'rtl':'ltr';
+}
+let saveT;function saveSoon(){clearTimeout(saveT);saveT=setTimeout(saveNow,350);}
+function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)return;const off=currentOff();b.pos={ch:R.ch,off};b.progress=R.frac||0;b.opened=Date.now();
+  const ex=R.text.slice(off,off+260).trim();if(ex.length>40)b.excerpt=ex;DB.put('books',b).catch(()=>{});}
+async function loadChapter(ch,target){
+  if(R.busy)return;R.busy=true;
+  try{R.ch=clamp(ch,0,R.book.chapters.length-1);for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
+    flow.style.visibility='hidden';flow.innerHTML=R.content.chapters[R.ch]||'';
+    await Promise.all([...flow.querySelectorAll('img')].map(im=>{const r=R.content.res[im.dataset.res];if(!r){im.remove();return null;}const u=URL.createObjectURL(new Blob([r.buf],{type:r.type}));R.urls.push(u);im.src=u;return Promise.race([im.decode().catch(()=>{}),new Promise(z=>setTimeout(z,3000))]);}));
+    geometry();measure();let k=0;
+    if(target){if(target.end)k=R.pages.length-1;else if(target.frag){const e=flow.querySelector(`[data-id="${CSS.escape(target.frag)}"]`);if(e){const [a]=coords(flow.getBoundingClientRect(),e.getBoundingClientRect());k=pageOfCoord(a+2);}}else if(target.off)k=pageOfOffset(target.off);}
+    show(k);flow.style.visibility='';indexChapter();
+  }finally{R.busy=false;}
+}
+function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const off=currentOff();geometry();measure();show(pageOfOffset(off));}
+function next(){if(R.page<R.pages.length-1)show(R.page+1);else if(R.ch<R.book.chapters.length-1)loadChapter(R.ch+1,{off:0});}
+function prev(){if(R.page>0)show(R.page-1);else if(R.ch>0)loadChapter(R.ch-1,{end:true});}
+function gotoGlobal(g){const b=R.book;let ch=0;while(ch<b.chapters.length-1&&g>=R.before[ch+1])ch++;const off=g-R.before[ch];if(ch===R.ch)show(pageOfOffset(off));else loadChapter(ch,{off});}
+async function openBook(id){
+  const book=await DB.get('books',id),content=await DB.get('content',id);if(!book||!content){toast('本を開けませんでした');return;}
+  R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
+  $('#rtitle').textContent=book.title;
+  const list=$('#tocList');list.textContent='';
+  for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
+  for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);
+  const tt=$('.toast');if(tt)tt.hidden=true;$('#home').hidden=true;readerEl.hidden=false;setUi(false);closePanels();
+  await loadChapter(book.pos.ch,{off:book.pos.off});
+}
+function closeBook(){closeDict();saveNow();readerEl.hidden=true;$('#home').hidden=false;flow.textContent='';for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];R.book=null;renderHome();}
+function setUi(on){readerEl.classList.toggle('ui',on);}
+function closePanels(){$('#toc').hidden=true;$('#aa').hidden=true;closeDict();}
+const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden;
+
+// touch + pencil: tap edges to turn, tap middle for controls, swipe to turn
+let down=null;const stage=$('#stage');
+stage.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
+stage.addEventListener('pointerup',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;down=null;
+  if(panelsOpen()){closePanels();return;}
+  if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)*1.4){const fwd=isV()?dx>0:dx<0;setUi(false);fwd?next():prev();return;}
+  if(Math.abs(dx)>10||Math.abs(dy)>10)return;
+  if(readerEl.classList.contains('ui')){setUi(false);return;}
+  const g=hitChar(e.clientX,e.clientY);if(g!=null&&lookupAt(g))return;
+  if(dictOpen()){closeDict();return;}
+  // off the words: top and bottom margins bring up the controls, the sides turn the page
+  const vr=viewport.getBoundingClientRect(),f=e.clientX/innerWidth;
+  if(e.clientY<vr.top||e.clientY>vr.bottom)setUi(true);else if(f<.3)isV()?next():prev();else if(f>.7)isV()?prev():next();else setUi(true);});
+stage.addEventListener('pointercancel',()=>{down=null;});
+addEventListener('keydown',e=>{if(readerEl.hidden)return;const v=isV();
+  if(e.key==='ArrowLeft'){v?next():prev();}else if(e.key==='ArrowRight'){v?prev():next();}
+  else if(e.key===' '||e.key==='ArrowDown'||e.key==='PageDown'){next();}else if(e.key==='ArrowUp'||e.key==='PageUp'){prev();}
+  else if(e.key==='Escape'){if(dictOpen())closeDict();else if(panelsOpen())closePanels();else if(readerEl.classList.contains('ui'))setUi(false);else closeBook();}else return;e.preventDefault();});
+$('#back').onclick=closeBook;
+$('#tocBtn').onclick=()=>{const t=$('#toc'),was=t.hidden;closePanels();t.hidden=!was;if(was){let cur=null;for(const b of t.querySelectorAll('button')){b.removeAttribute('aria-current');if(+b.dataset.ch<=R.ch)cur=b;}if(cur){cur.setAttribute('aria-current','true');cur.scrollIntoView({block:'center'});}}};
+$('#aaBtn').onclick=()=>{const a=$('#aa'),was=a.hidden;closePanels();a.hidden=!was;};
+$('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.size){S.size=clamp(S.size+ +b.dataset.size*2,14,34);saveSettings();relayout();}
+  else if(b.dataset.themeV){S.theme=b.dataset.themeV;saveSettings();applySettings();}
+  else if(b.dataset.fontV){S.font=b.dataset.fontV;saveSettings();applySettings();relayout();}
+  else if(b.dataset.dirV){const off=currentOff();R.book.vertical=b.dataset.dirV==='v';for(const x of document.querySelectorAll('[data-dir-v]'))x.setAttribute('aria-pressed',x===b);geometry();measure();show(pageOfOffset(off));}});
+$('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
+$('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
+let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(relayout,160);});
+addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden)saveNow();});
+
+/* ---------- dictionary: offline JMdict + word splitting (no AI) ---------- */
+const Dict={state:'idle',ready:null,bytes:null,lines:null,E:0,K:0,tok:null};
+const enc=new TextEncoder(),dec=new TextDecoder();
+async function gunzip(buf){return new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());}
+// big files may be stored whole (name.bin) or in numbered parts (name.0.bin, name.1.bin, …)
+const getBin=async u=>{const stem=u.replace(/\.bin$/,''),parts=[];
+  for(let i=0;i<40;i++){const r=await fetch(`${stem}.${i}.bin`).catch(()=>null);if(!r||!r.ok)break;parts.push(await r.arrayBuffer());}
+  if(parts.length)return new Blob(parts).arrayBuffer();
+  const r=await fetch(u);if(!r.ok)throw new Error(u+' '+r.status);return r.arrayBuffer();};
+function dictStart(){
+  if(Dict.ready)return Dict.ready;Dict.state='loading';
+  Dict.ready=(async()=>{
+    const [jm,kb]=await Promise.all([getBin('jmdict.bin'),getBin('kuromoji.bin')]);
+    const B=await gunzip(jm);let n=0;for(let i=0;i<B.length;i++)if(B[i]===10)n++;
+    const L=new Uint32Array(n+1);let k=0;L[k++]=0;for(let i=0;i<B.length;i++)if(B[i]===10)L[k++]=i+1;
+    const head=dec.decode(B.subarray(0,L[1]-1)).split(' ');if(head[0]!=='GYOKAN1')throw new Error('辞書の形式が違います');
+    Dict.bytes=B;Dict.lines=L;Dict.E=+head[1];Dict.K=+head[2];
+    const hl=new DataView(kb).getUint32(0,true),hdr=JSON.parse(dec.decode(new Uint8Array(kb,4,hl))),base=4+hl;
+    window.__gyokanDict=async url=>{const p=hdr[url.split('/').pop()];if(!p)throw new Error('missing '+url);return (await gunzip(kb.slice(base+p[0],base+p[0]+p[1]))).buffer;};
+    await new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='kuromoji.js';sc.onload=res;sc.onerror=()=>rej(new Error('kuromoji.js'));document.head.append(sc);});
+    Dict.tok=await new Promise((res,rej)=>kuromoji.builder({dicPath:'dict'}).build((e,t)=>e?rej(e):res(t)));
+    Dict.state='ready';
+  })().catch(e=>{Dict.state='error';console.error(e);});
+  return Dict.ready;
+}
+// binary search over the sorted key lines; returns entry numbers or null
+function dictFind(word){
+  if(!Dict.bytes||!word)return null;const q=enc.encode(word),B=Dict.bytes,L=Dict.lines;let lo=Dict.E+1,hi=Dict.E+Dict.K;
+  while(lo<=hi){const mid=(lo+hi)>>1;let p=L[mid],i=0,c=0;
+    for(;;i++,p++){const a=B[p],ae=a===9,be=i>=q.length;if(ae||be){c=ae&&be?0:(ae?-1:1);break;}if(a!==q[i]){c=a<q[i]?-1:1;break;}}
+    if(c===0){const raw=dec.decode(B.subarray(p+1,L[mid+1]-1)).split(','),ids=raw.map(x=>parseInt(x[0]==='~'?x.slice(1):x,36));ids.weak=raw.every(x=>x[0]==='~');return ids;} // weak: the key is only a kana reading of kanji words
+    if(c<0)lo=mid+1;else hi=mid-1;}
+  return null;
+}
+function dictEntry(i){const L=Dict.lines,f=dec.decode(Dict.bytes.subarray(L[i+1],L[i+2]-1)).split('\t');
+  return {k:f[0]?f[0].split(';'):[],r:f[1].split(';'),common:f[2]==='1',senses:f[3].split('\x1f').map(x=>{const p=x.split('|');return {pos:p[0],misc:p[1],gloss:p.slice(2).join('|')};})};}
+const NOWORD=/^[\s　-〿＀-／：-＠［-｀｛-･‐-※─-╿!-\/:-@\[-`{-~0-9０-９]+$/;
+const INFL=new Set(['動詞','形容詞','助動詞']);
+// may several tokens be joined into this entry? Compound nouns join freely; anything glued with particles must be
+// a common word or a set expression; rare/archaic entries and kanji spellings of usually-kana words never join.
+const RAREM=/archaic|obscure|obsolete|rare|dated/;
+function mergeOk(ids,key,glue){
+  for(const i of ids){const en=dictEntry(i);
+    if(en.senses.every(x=>RAREM.test(x.misc)))continue;
+    if(en.k.includes(key)&&en.senses.every(x=>/usually kana/.test(x.misc)))continue;
+    if(glue&&!en.common&&!en.senses.some(x=>/expression|conjunction|particle|adverb/.test(x.pos)))continue;
+    return true;}
+  return false;
+}
+// group tokens into dictionary words: longest JMdict match from each token, then attach trailing auxiliaries
+function groupTokens(toks,seg,base,out){
+  const n=toks.length,P=[];let cur=0;
+  for(const t of toks){let s=seg.indexOf(t.surface_form,cur);if(s<0)s=cur;P.push(s);cur=s+t.surface_form.length;}
+  const lemma=t=>t.basic_form&&t.basic_form!=='*'?t.basic_form:t.surface_form;
+  let i=0;
+  while(i<n){const t=toks[i];if(t.pos==='記号'||NOWORD.test(t.surface_form)){i++;continue;}
+    let best=null,surf='',allAux=true,glue=false;
+    for(let j=i;j<n&&j<i+7;j++){const tj=toks[j];if(j>i&&(tj.pos==='記号'||NOWORD.test(tj.surface_form)))break;
+      const a=surf+tj.surface_form,b=surf+lemma(tj),cands=INFL.has(tj.pos)?[b,a]:[a,b];
+      // a verb followed only by auxiliaries stays the verb (食べられる → 食べる); joined kana must be a real kana word (は+どう is not 波動)
+      if(j>i&&allAux)allAux=tj.pos==='助動詞'||(tj.pos==='動詞'&&(tj.pos_detail_1==='接尾'||tj.pos_detail_1==='非自立'))||(tj.pos==='助詞'&&tj.pos_detail_1==='接続助詞');
+      const skip=j>i&&INFL.has(t.pos)&&allAux;
+      if(j>i&&(tj.pos==='助詞'||tj.pos==='助動詞'))glue=true;
+      if(!skip)for(const c of cands){if(c.length>18)continue;const ids=dictFind(c);if(ids&&(j===i||(!ids.weak&&mergeOk(ids,c,glue||toks[i].pos==='助詞')))){best={j,key:c,ids};break;}}
+      surf=a;if(surf.length>18)break;}
+    let j=best?best.j:i,last=toks[j];
+    if(INFL.has(last.pos))while(j+1<n){const x=toks[j+1];
+      if(x.pos==='助動詞'||(x.pos==='動詞'&&x.pos_detail_1==='接尾')||(x.pos==='助詞'&&x.pos_detail_1==='接続助詞'&&/^(て|で|ば|ちゃ|じゃ)$/.test(x.surface_form)))j++;else break;}
+    const w={s:base+P[i],e:base+P[j]+toks[j].surface_form.length,key:best?best.key:lemma(t),ids:best?best.ids:null};
+    if(best&&best.j>i){w.parts=[];for(let q=i;q<=best.j;q++)w.parts.push([base+P[q],base+P[q]+toks[q].surface_form.length,lemma(toks[q]),toks[q].surface_form]);}
+    out.push(w);i=j+1;}
+}
+async function indexChapter(){
+  dictStart();await Dict.ready;if(Dict.state!=='ready'||readerEl.hidden||R.words)return;
+  const text=R.text,bounds=[...R.breaks,text.length],words=[];let st=0,t0=performance.now();
+  for(const end of bounds){if(end<=st)continue;const seg=text.slice(st,end);
+    if(seg.trim())groupTokens(Dict.tok.tokenize(seg),seg,st,words);st=end;
+    if(performance.now()-t0>24){await new Promise(r=>setTimeout(r));if(readerEl.hidden||R.text!==text)return;t0=performance.now();}}
+  if(R.text===text)R.words=words;
+}
+function charRect(g){const i=nodeAt(g),nd=R.nodes[i];if(!nd)return null;const m=g-nd.off;if(m<0||m>=nd.len)return null;rg.setStart(nd.n,m);rg.setEnd(nd.n,m+1);const r=rg.getBoundingClientRect();return r.width<1||r.height<1?null:r;}
+// which character is under the finger: find the line, then search along it (taps on furigana land on the word beside them)
+function hitChar(x,y){
+  if(!R.text)return null;const vr=viewport.getBoundingClientRect();if(x<vr.left||x>vr.right||y<vr.top||y>vr.bottom)return null;
+  const fr=flow.getBoundingClientRect(),v=isV(),c=v?fr.right-x:y-fr.top,p=R.pages[R.page];if(c<p.s-4||c>p.e+1)return null;
+  const ln=R.lines.find(l=>c>=l.a&&c<l.b);if(!ln)return null;
+  let lo=firstAtOrAfter(ln.a-1),hi=firstAtOrAfter(ln.b-1)-1;if(centerAt(hi+1)!=null&&centerAt(hi+1)<ln.b-1)hi++;if(hi<lo)return null;
+  const q=v?y:x;
+  while(lo<hi){const mid=(lo+hi)>>1,r=charRect(mid);if(!r){lo=mid+1;continue;}if((v?r.bottom:r.right)<q)lo=mid+1;else hi=mid;}
+  const r=charRect(lo);if(!r)return null;if(q<(v?r.top:r.left)-3||q>(v?r.bottom:r.right)+3)return null;return lo;
+}
+const dictEl=$('#dict');const dictOpen=()=>!dictEl.hidden;
+function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;try{CSS.highlights&&CSS.highlights.delete('gy-lookup');}catch(e){}}
+function rangeOf(s,e){const a=nodeAt(s),b=nodeAt(e-1),r=document.createRange();r.setStart(R.nodes[a].n,s-R.nodes[a].off);r.setEnd(R.nodes[b].n,e-R.nodes[b].off);return r;}
+function scanFrom(g){const text=R.text;for(let len=Math.min(14,text.length-g);len>=1;len--){const key=text.slice(g,g+len),ids=dictFind(key);if(ids)return {s:g,e:g+len,key,ids};}return null;}
+function entryNode(i,key){const en=dictEntry(i);let word,read;
+  if(en.k.includes(key)){word=key;read=en.r.slice(0,3).join('、');}else if(en.r.includes(key)){word=key;read=en.k.slice(0,2).join('、');}else{word=en.k[0]||en.r[0];read=en.k.length?en.r[0]:'';}
+  const ol=h('ol');let prev='';
+  for(const sn of en.senses.slice(0,8)){const tag=[sn.pos,sn.misc].filter(Boolean).join(', ').replace(/,/g,', ').replace(/ +/g,' ');ol.append(h('li',null,tag&&tag!==prev?h('span',{class:'d-pos'},tag):null,sn.gloss));prev=tag;}
+  return h('div',{class:'d-entry'},h('div',{class:'d-head'},h('span',{class:'d-word'},word),read?h('span',{class:'d-read'},read):null,en.common?h('span',{class:'d-tag'},'常用'):null),ol);}
+function lookupAt(g){
+  const ch=R.text[g];if(!ch||NOWORD.test(ch))return false;
+  if(Dict.state==='error'){if(!Dict.told){Dict.told=true;toast('辞書ファイル（jmdict.bin・kuromoji.bin・kuromoji.js）が見つからないため、辞書は使えません',5200);}return false;}
+  if(Dict.state!=='ready'){dictStart();showDict(g,g+1,[h('div',{class:'d-note'},'辞書を準備しています…')]);
+    Dict.ready.then(()=>{if(dictOpen()&&dictEl.dataset.g==String(g)){closeDict();lookupAt(g);}});return true;}
+  let res=null,part=null;
+  if(R.words){let lo=0,hi=R.words.length-1;while(lo<=hi){const mid=(lo+hi)>>1,w=R.words[mid];if(g<w.s)hi=mid-1;else if(g>=w.e)lo=mid+1;else{res=w;break;}}
+    if(res&&res.parts){const pt=res.parts.find(x=>g>=x[0]&&g<x[1]);if(pt){const ids=dictFind(pt[2])||dictFind(pt[3]);if(ids)part={key:dictFind(pt[2])?pt[2]:pt[3],ids};}}}
+  if(!res||!res.ids){const sc=scanFrom(g);if(sc)res=res&&!res.ids?{s:Math.min(res.s,sc.s),e:Math.max(res.e,sc.e),key:sc.key,ids:sc.ids}:sc;}
+  if(!res)res={s:g,e:g+1,key:ch,ids:null};
+  const kids=[],surface=R.text.slice(res.s,res.e);
+  if(res.ids){if(surface!==res.key)kids.push(h('div',{class:'d-from'},surface));for(const i of res.ids.slice(0,4))kids.push(entryNode(i,res.key));
+    if(part&&part.key!==res.key){kids.push(h('div',{class:'d-part'},'この部分'));kids.push(entryNode(part.ids[0],part.key));}}
+  else kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));
+  showDict(res.s,res.e,kids);dictEl.dataset.g=g;return true;
+}
+function showDict(s,e,kids){
+  const rgw=rangeOf(s,e);try{if(window.Highlight&&CSS.highlights)CSS.highlights.set('gy-lookup',new Highlight(rgw));}catch(err){}
+  const rect=rgw.getClientRects()[0]||rgw.getBoundingClientRect();
+  dictEl.textContent='';dictEl.append(...kids);dictEl.hidden=false;dictEl.scrollTop=0;dictEl.dataset.g=s;
+  const pw=dictEl.offsetWidth,ph=dictEl.offsetHeight,vw=innerWidth,vh=innerHeight,gap=16;let x,y;
+  if(isV()){x=rect.left-gap-pw;if(x<12)x=rect.right+gap;x=clamp(x,12,vw-pw-12);y=clamp(rect.top-10,12,vh-ph-12);}
+  else{y=rect.bottom+gap;if(y+ph>vh-12)y=rect.top-gap-ph;y=clamp(y,12,vh-ph-12);x=clamp(rect.left-24,12,vw-pw-12);}
+  dictEl.style.left=x+'px';dictEl.style.top=y+'px';
+}
+
+/* ---------- start ---------- */
+(async()=>{applySettings();await DB.open();await renderHome();
+  try{if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
+  window.__ready=true;})();
+</script>
+</body>
+</html>
