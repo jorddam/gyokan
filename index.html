@@ -144,6 +144,22 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .day{display:flex;align-items:baseline;gap:12px;margin:4px 0 18px}
 .day h2{font-family:var(--mincho);font-size:1.5rem;font-weight:600;margin:0;letter-spacing:.06em}
 .day span{color:var(--mute);font-size:.9rem}
+#ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
+#notesList{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 22px 20px}
+.nt{padding:14px 0;border-bottom:1px solid var(--line)}
+.nt-where{font-size:.74rem;color:var(--mute)}
+.nt-hand{font-family:var(--mincho);font-size:1.05rem;margin:4px 0 6px;padding-left:10px;border-left:2px solid var(--accent)}
+.nt-ai{font-size:.92rem;line-height:1.7}
+.nt .acts,.nt-empty{font-size:.82rem;color:var(--mute)}
+.nt .acts{display:flex;gap:18px;margin-top:8px}
+.nt .acts button{text-decoration:underline;text-underline-offset:3px}
+#sheet{position:fixed;inset:0;z-index:45;background:color-mix(in srgb,var(--bg) 86%,transparent);display:grid;place-items:center;padding:24px}
+#sheet .box{width:min(640px,100%);max-height:80vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:26px 30px 20px;box-shadow:0 30px 60px -24px rgba(0,0,0,.55)}
+#sheet h3{font-family:var(--mincho);font-size:1.25rem;margin:0 0 2px;letter-spacing:.06em}
+#sheet .from{color:var(--mute);font-size:.82rem;margin-bottom:16px}
+#sheet .body{font-family:var(--mincho);font-size:1.12rem;line-height:2;white-space:pre-wrap}
+#sheet .foot{display:flex;justify-content:flex-end;margin-top:18px}
+.set input[type=password]{font:inherit;font-size:.86rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:13em}
 .goals{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0 0 24px}
 .goals .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--mute)}
 .goals .lab b{font-size:1.05rem;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
@@ -240,13 +256,16 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <input type="file" id="backupFile" accept=".json,application/json" hidden>
 </main>
 <section id="study" hidden aria-label="単語の復習"></section>
+<section id="sheet" hidden aria-label="AIの返事"></section>
 
 <section id="reader" hidden aria-label="読書画面">
   <div id="stage"><div id="viewport"><div id="flow" class="v"></div></div></div>
+  <canvas id="ink"></canvas>
   <div id="foot"><span id="footCh"></span><span id="footPct"></span></div>
   <header id="rtop" class="chrome">
     <button id="back">‹ 本棚</button>
     <div id="rtitle"></div>
+    <button id="notesBtn">ノート</button>
     <button id="tocBtn">目次</button>
     <button id="aaBtn">表示</button>
   </header>
@@ -255,6 +274,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
     <div id="scrubInfo"><span id="siCh"></span><span id="siLeft"></span></div>
   </footer>
   <aside id="toc" class="sheet" hidden><h3>目次</h3><ol id="tocList"></ol></aside>
+  <aside id="notes" class="sheet" hidden><h3>ノート</h3><div id="notesList"></div></aside>
   <div id="dict" hidden role="dialog" aria-label="辞書"></div>
   <div id="nudge" hidden></div>
   <div id="aa" class="pop" hidden>
@@ -265,6 +285,8 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
       <button class="sw" data-theme-v="sumi" style="background:#161918" aria-label="墨"></button></div></div>
     <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
     <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
+    <div class="row"><span>手書き</span><div class="seg" id="segInk"><button data-ink-v="draw" aria-pressed="true">書く</button><button data-ink-v="erase">消す</button><button data-ink-undo="1">戻す</button></div></div>
+    <div class="row" id="aiInkRow" hidden><span>このページの手書き</span><button class="ghost" id="aiInkBtn">AIノートを作る</button></div>
   </div>
 </section>
 
@@ -276,8 +298,8 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const PAGE_CHARS=600; // one "page" = 600 characters, independent of font size
 
 /* ---------- storage ---------- */
-const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map()},
-  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',2);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
+const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new Map(),notes:new Map()},
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',4);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab','ink','notes'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
     try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{});}catch(e){}},
   run(store,mode,fn){if(!this.db)return Promise.resolve(fn(null));return new Promise((res,rej)=>{let out;try{const tx=this.db.transaction(store,mode);const rq=fn(tx.objectStore(store));if(rq)rq.onsuccess=()=>{out=rq.result;};tx.oncomplete=()=>res(out);tx.onerror=tx.onabort=()=>rej(tx.error);}catch(e){rej(e);}});},
   get(s,id){return this.run(s,'readonly',o=>o?o.get(id):null).then(v=>this.db?v:this.mem[s].get(id));},
@@ -293,7 +315,7 @@ const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.get
 const bookG=b=>{let g=0;for(let i=0;i<b.pos.ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return g+(b.pos.off||0);};
 const sameBook=(a,b)=>a.title===b.title&&(a.author||'')===(b.author||'')&&a.total===b.total;
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}}
-function applySettings(){const d=document.documentElement;d.dataset.theme=S.theme;d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;
+function applySettings(){const d=document.documentElement;d.dataset.theme=S.theme;d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
 
@@ -530,7 +552,9 @@ function startStudy(queue){
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),
-    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab')};}
+    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab'),
+    notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
+    ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
 async function exportBackup(){const data=JSON.stringify(await makeBackup()),name=`gyokan-backup-${todayStr()}.json`,file=new File([data],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});return;}}catch(e){if(e&&e.name==='AbortError')return;}
   const a=h('a',{href:URL.createObjectURL(file),download:name});document.body.append(a);a.click();a.remove();toast('バックアップを書き出しました');}
@@ -539,17 +563,25 @@ async function restoreBackup(data){
   const books=await DB.all('books'),pending=[];let nb=0;
   for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
+  for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
+  for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
   if(data.log){const log=LS.get('log',{});for(const k in data.log)log[k]=Math.max(log[k]||0,data.log[k]);LS.set('log',log);}
   if(data.folders)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
   if(data.settings){Object.assign(S,data.settings);saveSettings();applySettings();}
   return {books:nb,pending:pending.length,vocab:(data.vocab||[]).length};
 }
+function keyRow(){const has=!!LS.get('key',''),inp=h('input',{type:'password',placeholder:'sk-ant-…','aria-label':'Claude APIキー',autocomplete:'off'});
+  const save=h('button',{class:'ghost',onclick:()=>{const v=inp.value.trim();if(!v)return;LS.set('key',v);renderHome();toast('キーを保存しました');}},'保存');
+  const test=h('button',{class:'ghost',onclick:async()=>{test.textContent='確認中…';try{toast('AI：'+await askClaude('「接続できました」とだけ返してください。',30),4000);}catch(e){toast('つながりません：'+(e&&e.message||e),8000);}test.textContent='接続を試す';}},'接続を試す');
+  const del=h('button',{class:'ghost',onclick:()=>{LS.set('key','');renderHome();}},'削除');
+  return h('div',{class:'row'},h('span',null,'AI（Claude APIキー）',h('small',null,'本を開いて「使う」を選んだ読書でだけ使います。送るのは、閉じるときの要約1回と、自分で押した手書きの読み取りだけです。キーはこの端末にだけ保存し、バックアップには入れません。')),h('div',{class:'step'},...(has?[test,del]:[inp,save])));}
 function renderSettings(root){
   const out=h('output',null,String(S.pages)),bump=n=>{S.pages=clamp(S.pages+n,3,60);saveSettings();out.textContent=S.pages;};
   root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'設定'))),h('div',{class:'set'},
     S.simple?null:h('div',{class:'row'},h('span',null,'一日のページ数',h('small',null,'1ページは600字。読書中の本に順番に割り振ります。月と年の目標もこの数から決まります。')),h('div',{class:'step'},h('button',{'aria-label':'減らす',onclick:()=>bump(-1)},'−'),out,h('button',{'aria-label':'増やす',onclick:()=>bump(1)},'＋'))),
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
-    h('div',{class:'row'},h('span',null,'文字・紙の色・組み方',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
+    S.simple?null:keyRow(),
+    h('div',{class:'row'},h('span',null,'文字・紙の色・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
 }
 $('#backupFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const r=await restoreBackup(JSON.parse(await f.text()));toast(`読み込みました：本${r.books}冊、単語${r.vocab}語`+(r.pending?`（未追加の本${r.pending}冊は追加時に反映）`:''),5000);renderHome();}catch(err){toast(err.message||'読み込めませんでした',4200);}};
 for(const t of document.querySelectorAll('.tabs button'))t.onclick=()=>setView(t.dataset.view);
@@ -613,7 +645,7 @@ function show(k,save=true){
   // window shows [s-pad, e-pad], centred; the pad keeps furigana of the neighbouring line out of view
   flow.style.transform=v?`translateX(${ws}px)`:`translateY(${-ws}px)`;
   viewport.style.clipPath=v?`inset(0 ${c2}px 0 ${c2}px)`:`inset(${c2}px 0 ${c2}px 0)`;
-  hud();if(save)saveSoon();
+  hud();drawInk();if(save)saveSoon();
 }
 function currentOff(){return pageOffset(R.page);}
 function hud(){
@@ -635,12 +667,12 @@ function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)ret
   const ex=R.text.slice(off,off+260).trim();if(ex.length>40)b.excerpt=ex;DB.put('books',b).catch(()=>{});}
 async function loadChapter(ch,target){
   if(R.busy)return;R.busy=true;
-  try{R.ch=clamp(ch,0,R.book.chapters.length-1);for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
+  try{R.ch=clamp(ch,0,R.book.chapters.length-1);R.ink=null;for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
     flow.style.visibility='hidden';flow.innerHTML=R.content.chapters[R.ch]||'';
     await Promise.all([...flow.querySelectorAll('img')].map(im=>{const r=R.content.res[im.dataset.res];if(!r){im.remove();return null;}const u=URL.createObjectURL(new Blob([r.buf],{type:r.type}));R.urls.push(u);im.src=u;return Promise.race([im.decode().catch(()=>{}),new Promise(z=>setTimeout(z,3000))]);}));
     geometry();measure();let k=0;
     if(target){if(target.end)k=R.pages.length-1;else if(target.frag){const e=flow.querySelector(`[data-id="${CSS.escape(target.frag)}"]`);if(e){const [a]=coords(flow.getBoundingClientRect(),e.getBoundingClientRect());k=pageOfCoord(a+2);}}else if(target.off)k=pageOfOffset(target.off);}
-    show(k);flow.style.visibility='';indexChapter();
+    show(k);flow.style.visibility='';indexChapter();loadInk();
   }finally{R.busy=false;}
 }
 function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const off=currentOff();geometry();measure();show(pageOfOffset(off));}
@@ -651,13 +683,14 @@ function gotoGlobal(g){const b=R.book;let ch=0;while(ch<b.chapters.length-1&&g>=
 async function openBook(id){
   const book=await DB.get('books',id),content=await DB.get('content',id);if(!book||!content){toast('本を開けませんでした');return;}
   $('#study').hidden=true;const plan=LS.get('plan',null);R.item=!S.simple&&plan&&plan.date===todayStr()?plan.items.find(x=>x.id===id)||null:null;$('#nudge').hidden=true;
-  R.pend=null;R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
+  $('#notesBtn').hidden=!!S.simple;R.pend=null;R.ai=null;R.erase=false;R.vis=[];$('#aiInkRow').hidden=true;for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x.dataset.inkV==='draw');
+  R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
   $('#rtitle').textContent=book.title;
   const list=$('#tocList');list.textContent='';
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
   for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);
   const tt=$('.toast');if(tt)tt.hidden=true;$('#home').hidden=true;readerEl.hidden=false;setUi(false);closePanels();
-  await loadChapter(book.pos.ch,{off:book.pos.off});
+  sizeInk();await loadChapter(book.pos.ch,{off:book.pos.off});offerAI();
 }
 async function nudge(plan){
   const books=await DB.all('books'),nx=plan.items.find(x=>!x.done&&x.id!==R.book.id&&books.some(b=>b.id===x.id)),el=$('#nudge');el.textContent='';
@@ -665,15 +698,31 @@ async function nudge(plan){
   else el.append(h('span',null,'今日の読書はこのページで完了です'),h('button',{onclick:closeBook},'閉じる'));
   el.hidden=false;
 }
-function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();readerEl.hidden=true;$('#home').hidden=false;flow.textContent='';for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];R.book=null;renderHome();}
+function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();
+  // AI summary: only if this sitting opted in, and only once, on closing
+  let sum=null;if(R.ai&&R.book&&!S.simple){const endG=R.before[R.ch]+(R.page<R.pages.length-1?pageOffset(R.page+1):R.text.length);if(endG-R.ai.start>=300)sum={title:R.book.title,text:sessionText(R.ai.start,endG)};}
+  readerEl.hidden=true;$('#home').hidden=false;flow.textContent='';for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];R.book=null;R.ink=null;R.ai=null;ictx.clearRect(0,0,innerWidth,innerHeight);renderHome();
+  if(sum)showSheet('今回の要約',`『${sum.title}』`,askClaude('次の文章は、読者がたった今読み終えた日本語の本の一節です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+sum.text));
+}
 function setUi(on){readerEl.classList.toggle('ui',on);}
-function closePanels(){$('#toc').hidden=true;$('#aa').hidden=true;closeDict();}
-const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden;
+function closePanels(){$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;closeDict();}
+const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden;
 
 // touch + pencil: tap edges to turn, tap middle for controls, swipe to turn
-let down=null;const stage=$('#stage');
-stage.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
-stage.addEventListener('pointerup',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;down=null;
+let down=null,pen=null;const stage=$('#stage');
+const usesPen=e=>e.pointerType==='pen'||window.__penAll;
+stage.addEventListener('pointerdown',e=>{
+  if(usesPen(e)&&R.ink&&!panelsOpen()&&!readerEl.classList.contains('ui')){pen={pts:[[e.clientX,e.clientY,e.pressure||.5]],moved:false,erased:false};try{stage.setPointerCapture(e.pointerId);}catch(x){}down=null;return;}
+  down={x:e.clientX,y:e.clientY};});
+stage.addEventListener('pointermove',e=>{if(!pen)return;const l=pen.pts[pen.pts.length-1],x=e.clientX,y=e.clientY;if(Math.hypot(x-l[0],y-l[1])<1.5)return;
+  if(!pen.moved){if(Math.hypot(x-pen.pts[0][0],y-pen.pts[0][1])<7)return;pen.moved=true;closeDict();}
+  const pt=[x,y,e.pressure||.5];
+  if(R.erase){const n=R.ink.strokes.length;R.ink.strokes=R.ink.strokes.filter(st=>{const v=R.vis.find(o=>o.st===st);return !(v&&v.pts.some(q=>Math.hypot(q[0]-x,q[1]-y)<14));});if(R.ink.strokes.length!==n){pen.erased=true;drawInk();}}
+  else paint(ictx,[l,pt],inkColor(),S.size);
+  pen.pts.push(pt);});
+stage.addEventListener('pointerup',e=>{
+  if(pen){const pp=pen;pen=null;if(!pp.moved)down={x:pp.pts[0][0],y:pp.pts[0][1]};else{if(R.erase){if(pp.erased)saveInk();}else addStroke(pp.pts);return;}}
+  if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;down=null;
   if(panelsOpen()){closePanels();return;}
   if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)*1.4){const fwd=isV()?dx>0:dx<0;setUi(false);fwd?next():prev();return;}
   if(Math.abs(dx)>10||Math.abs(dy)>10)return;
@@ -683,23 +732,95 @@ stage.addEventListener('pointerup',e=>{if(!down)return;const dx=e.clientX-down.x
   // off the words: top and bottom margins bring up the controls, the sides turn the page
   const vr=viewport.getBoundingClientRect(),f=e.clientX/innerWidth;
   if(e.clientY<vr.top||e.clientY>vr.bottom)setUi(true);else if(f<.3)isV()?next():prev();else if(f>.7)isV()?prev():next();else setUi(true);});
-stage.addEventListener('pointercancel',()=>{down=null;});
+stage.addEventListener('pointercancel',()=>{down=null;if(pen){pen=null;drawInk();}});
 addEventListener('keydown',e=>{if(readerEl.hidden)return;const v=isV();
   if(e.key==='ArrowLeft'){v?next():prev();}else if(e.key==='ArrowRight'){v?prev():next();}
   else if(e.key===' '||e.key==='ArrowDown'||e.key==='PageDown'){next();}else if(e.key==='ArrowUp'||e.key==='PageUp'){prev();}
   else if(e.key==='Escape'){if(dictOpen())closeDict();else if(panelsOpen())closePanels();else if(readerEl.classList.contains('ui'))setUi(false);else closeBook();}else return;e.preventDefault();});
 $('#back').onclick=closeBook;
 $('#tocBtn').onclick=()=>{const t=$('#toc'),was=t.hidden;closePanels();t.hidden=!was;if(was){let cur=null;for(const b of t.querySelectorAll('button')){b.removeAttribute('aria-current');if(+b.dataset.ch<=R.ch)cur=b;}if(cur){cur.setAttribute('aria-current','true');cur.scrollIntoView({block:'center'});}}};
+$('#notesBtn').onclick=()=>openNotes();
 $('#aaBtn').onclick=()=>{const a=$('#aa'),was=a.hidden;closePanels();a.hidden=!was;};
 $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.size){S.size=clamp(S.size+ +b.dataset.size*2,14,34);saveSettings();relayout();}
+  if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);}
+  else if(b.dataset.inkUndo){if(R.ink&&R.ink.strokes.length){R.ink.strokes.pop();saveInk();drawInk();}}
+  else if(b.id==='aiInkBtn'){readInk();}
+  else if(b.dataset.size){S.size=clamp(S.size+ +b.dataset.size*2,14,34);saveSettings();relayout();}
   else if(b.dataset.themeV){S.theme=b.dataset.themeV;saveSettings();applySettings();}
   else if(b.dataset.fontV){S.font=b.dataset.fontV;saveSettings();applySettings();relayout();}
   else if(b.dataset.dirV){const off=currentOff();R.book.vertical=b.dataset.dirV==='v';for(const x of document.querySelectorAll('[data-dir-v]'))x.setAttribute('aria-pressed',x===b);geometry();measure();show(pageOfOffset(off));}});
 $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
-let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(relayout,160);});
+let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{sizeInk();relayout();},160);});
 addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden)saveNow();});
+
+/* ---------- handwriting: each stroke is tied to a character and stored in font-size units,
+   so it follows the text when the page breaks or the font size change ---------- */
+const inkC=$('#ink'),ictx=inkC.getContext('2d');
+function sizeInk(){const d=window.devicePixelRatio||1;inkC.width=Math.round(innerWidth*d);inkC.height=Math.round(innerHeight*d);ictx.setTransform(d,0,0,d,0,0);}
+async function loadInk(){const id=R.book.id+':'+R.ch,rec=await DB.get('ink',id);if(!R.book||id!==R.book.id+':'+R.ch)return;R.ink=rec||{id,strokes:[]};drawInk();}
+function saveInk(){if(R.ink)DB.put('ink',R.ink).catch(()=>{});}
+const inkColor=()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2a4d7c';
+function paint(ctx,pts,color,fs){ctx.strokeStyle=ctx.fillStyle=color;ctx.lineCap='round';ctx.lineJoin='round';
+  if(pts.length===1){ctx.beginPath();ctx.arc(pts[0][0],pts[0][1],fs*.05,0,7);ctx.fill();return;}
+  for(let i=1;i<pts.length;i++){ctx.lineWidth=fs*(.045+.09*((pts[i][2]+pts[i-1][2])/2));ctx.beginPath();ctx.moveTo(pts[i-1][0],pts[i-1][1]);ctx.lineTo(pts[i][0],pts[i][1]);ctx.stroke();}}
+// screen points of a stroke, or null when its character is not on the page being shown
+function strokePts(st){if(st.v!==isV())return null;const r=charRect(st.a);if(!r)return null;
+  const [a,b]=coords(flow.getBoundingClientRect(),r),c=(a+b)/2,p=R.pages[R.page];if(c<p.s-1||c>=p.e)return null;
+  const cx=r.left+r.width/2,cy=r.top+r.height/2,fs=S.size;return st.p.map(q=>st.v?[cx-q[0]*fs,cy+q[1]*fs,q[2]]:[cx+q[1]*fs,cy+q[0]*fs,q[2]]);}
+function drawInk(){ictx.clearRect(0,0,innerWidth,innerHeight);R.vis=[];if(!R.ink||!R.book||readerEl.hidden)return;const col=inkColor();
+  for(const st of R.ink.strokes){const pts=strokePts(st);if(pts){R.vis.push({st,pts});paint(ictx,pts,col,S.size);}}}
+function nearestChar(x,y){const fr=flow.getBoundingClientRect(),v=isV(),c=v?fr.right-x:y-fr.top,p=R.pages[R.page];let best=null,bd=1e9;
+  for(const l of R.lines){if(l.b<=p.s+1||l.a>=p.e-1)continue;const d=c<l.a?l.a-c:c>l.b?c-l.b:0;if(d<bd){bd=d;best=l;}}
+  if(!best)return null;let lo=firstAtOrAfter(best.a-1),hi=Math.max(lo,firstAtOrAfter(best.b-1)-1);const q=v?y:x;
+  while(lo<hi){const mid=(lo+hi)>>1,r=charRect(mid);if(!r){lo=mid+1;continue;}if((v?r.bottom:r.right)<q)lo=mid+1;else hi=mid;}
+  for(let k=0;k<8;k++){if(charRect(lo-k))return lo-k;if(charRect(lo+k))return lo+k;}return null;}
+function addStroke(pts){if(!R.ink)return;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const q of pts){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);}
+  const a=nearestChar((x0+x1)/2,(y0+y1)/2);if(a==null){drawInk();return;}
+  const r=charRect(a),cx=r.left+r.width/2,cy=r.top+r.height/2,fs=S.size,v=isV(),f=n=>Math.round(n*1000)/1000;
+  R.ink.strokes.push({a,v,p:pts.map(q=>v?[f((cx-q[0])/fs),f((q[1]-cy)/fs),f(q[2])]:[f((q[1]-cy)/fs),f((q[0]-cx)/fs),f(q[2])])});saveInk();drawInk();}
+
+/* ---------- AI: full view only, opted into for one sitting at a time ---------- */
+const AI_MODEL='claude-opus-5-5',NOTE_MODEL='claude-sonnet-5-5'; // summaries on Opus, handwriting notes on Sonnet
+const aiKey=()=>S.simple?'':LS.get('key','');
+async function askClaude(content,max=700,model=AI_MODEL){
+  const call=ver=>fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':LS.get('key',''),'anthropic-version':ver,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model,max_tokens:max,messages:[{role:'user',content}]})});
+  let r=await call('2026-10-21'),j=await r.json().catch(()=>null);
+  if(!r.ok&&j&&j.error&&/version/i.test(j.error.message||'')){r=await call('2023-06-01');j=await r.json().catch(()=>null);}
+  if(!r.ok)throw new Error((j&&j.error&&j.error.message)||('HTTP '+r.status));
+  return (j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('').trim();
+}
+function showSheet(title,from,promise){const el=$('#sheet'),body=h('div',{class:'body'},'書いています…');el.textContent='';
+  el.append(h('div',{class:'box'},h('h3',null,title),h('div',{class:'from'},from),body,h('div',{class:'foot'},h('button',{class:'ghost',onclick:()=>{el.hidden=true;}},'閉じる'))));el.hidden=false;
+  promise.then(t=>{body.textContent=t||'（返事が空でした）';},e=>{body.textContent='AIに届きませんでした：'+(e&&e.message||e);});}
+// shown once when a book opens; it goes away on the first page turn, which leaves AI off for this sitting
+function offerAI(){if(!aiKey()||!R.book)return;const el=$('#nudge');if(!el.hidden)return;el.textContent='';
+  el.append(h('span',null,'この読書でAIを使いますか'),h('button',{onclick:()=>{R.ai={start:R.g};$('#aiInkRow').hidden=false;el.textContent='';el.append(h('span',{style:'padding-right:12px'},'AIオン　本を閉じるときに要約します'));setTimeout(()=>{if(el.textContent.startsWith('AIオン'))el.hidden=true;},2600);}},'使う'));el.hidden=false;}
+function sessionText(fromG,toG){let out='';const b=R.book;
+  for(let ch=0;ch<b.chapters.length;ch++){const a=R.before[ch],e=a+b.chapters[ch].chars;if(e<=fromG||a>=toG)continue;const d=document.createElement('div');d.innerHTML=R.content.chapters[ch];const t=plainText(d);out+=t.slice(Math.max(0,fromG-a),Math.min(t.length,toG-a))+'\n';}
+  return out.slice(-12000);}
+// AI note: reads the handwriting on this page together with the text around it, and leaves one very short comment in the notes list
+function readInk(){if(!R.ai)return;if(!R.vis.length){toast('このページに手書きはありません');return;}
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const o of R.vis)for(const q of o.pts){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);}
+  const m=18,sc=2,c=document.createElement('canvas');c.width=Math.ceil((x1-x0+2*m)*sc);c.height=Math.ceil((y1-y0+2*m)*sc);const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.setTransform(sc,0,0,sc,(m-x0)*sc,(m-y0)*sc);for(const o of R.vis)paint(x,o.pts,'#111',S.size);
+  const data=c.toDataURL('image/png').split(',')[1],book=R.book,ch=R.ch,a=Math.min(...R.vis.map(o=>o.st.a)),g=R.before[ch]+a;
+  const from=pageOffset(R.page),to=R.page<R.pages.length-1?pageOffset(R.page+1):R.text.length,page=R.text.slice(Math.max(0,from-200),to),near=sentenceAround(a,a+1).text;
+  closePanels();setUi(false);
+  const ask='画像は、読者が日本語の本を読みながらページに書き込んだ手書きのメモです。\n\n【メモのすぐそばの文】\n'+near+'\n\n【このページの本文】\n'+page+
+    '\n\n次の二行だけを、この形式で返してください。\n書き起こし：（手書きの文字をそのまま。下線や丸などの印だけなら「印のみ」）\nコメント：（一〜二文の短い日本語。メモの日本語に誤りがあれば直し方を、そうでなければメモと本文の関係について一言）';
+  const p=askClaude([{type:'image',source:{type:'base64',media_type:'image/png',data}},{type:'text',text:ask}],400,NOTE_MODEL).then(async t=>{
+    const hand=((t.match(/書き起こし[：:]\s*(.*)/)||[])[1]||'').trim(),comment=((t.match(/コメント[：:]\s*([\s\S]*)/)||[])[1]||t).trim();
+    await DB.put('notes',{id:'n'+Date.now().toString(36),bookId:book.id,book:book.title,ch,off:a,g,hand,comment,added:Date.now()});
+    return (hand?`手書き：${hand}\n\n`:'')+comment+'\n\n（ノートに保存しました）';});
+  showSheet('AIノート',`『${book.title}』`,p);}
+async function openNotes(){const el=$('#notes'),was=el.hidden;closePanels();if(!was||!R.book)return;
+  const all=(await DB.all('notes')).filter(n=>n.bookId===R.book.id).sort((p,q)=>p.g-q.g),list=$('#notesList');list.textContent='';
+  if(!all.length)list.append(h('p',{class:'nt-empty'},'まだノートはありません。AIを使う読書で、手書きのあるページから「表示」→「AIノートを作る」を押すと、短いコメントがここに残ります。'));
+  for(const n of all){let title='';for(let i=n.ch;i>=0&&!title;i--)title=R.book.chapters[i].title;
+    list.append(h('div',{class:'nt'},h('div',{class:'nt-where'},title||`${Math.round(n.g/R.book.total*100)}%`),n.hand&&n.hand!=='印のみ'?h('div',{class:'nt-hand'},n.hand):null,h('div',{class:'nt-ai'},n.comment),
+      h('div',{class:'acts'},h('button',{onclick:()=>{closePanels();setUi(false);loadChapter(n.ch,{off:n.off});}},'この場所へ'),h('button',{onclick:async()=>{await DB.del('notes',n.id);el.hidden=true;openNotes();}},'削除'))));}
+  el.hidden=false;}
 
 /* ---------- dictionary: offline JMdict + word splitting (no AI) ---------- */
 const Dict={state:'idle',ready:null,bytes:null,lines:null,E:0,K:0,tok:null};
