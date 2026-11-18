@@ -223,6 +223,10 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .card .btns button{min-width:128px;padding:13px 22px;border-radius:999px;font-weight:600;font-size:.98rem;border:1px solid var(--line)}
 .card .btns .go{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 #nudge{position:absolute;left:50%;bottom:calc(var(--sab) + 40px);transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 8px 8px 20px;box-shadow:0 18px 40px -18px rgba(0,0,0,.55);z-index:12;font-size:.9rem;max-width:92vw;white-space:nowrap}
+#selbar{position:absolute;left:50%;bottom:calc(var(--sab) + 40px);transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px;box-shadow:0 18px 40px -18px rgba(0,0,0,.55);z-index:13;font-size:.88rem;white-space:nowrap}
+#selbar button{padding:9px 15px;border-radius:999px}
+#selbar .go{background:var(--accent);color:var(--on-accent);font-weight:600}
+#reader{-webkit-touch-callout:none}
 #nudge button{background:var(--accent);color:var(--on-accent);border-radius:999px;padding:8px 16px;font-weight:600;font-size:.86rem}
 .d-save{margin-left:auto;font-size:.78rem;padding:4px 11px;border-radius:999px;border:1px solid var(--line);color:var(--ink);white-space:nowrap}
 .d-save[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -280,6 +284,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <aside id="notes" class="sheet" hidden><h3>ノート</h3><div id="notesList"></div></aside>
   <div id="dict" hidden role="dialog" aria-label="辞書"></div>
   <div id="nudge" hidden></div>
+  <div id="selbar" hidden></div>
   <div id="aa" class="pop" hidden>
     <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
     <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
@@ -677,7 +682,7 @@ function pageOffset(k){return k<=0?0:firstAtOrAfter(R.pages[k].s-1);}
 function pageOfCoord(c){const P=R.pages;for(let k=0;k<P.length;k++)if(c<P[k].e-.5)return k;return P.length-1;}
 function pageOfOffset(off){if(off<=0)return 0;const c=centerAt(off);return c==null?R.pages.length-1:pageOfCoord(c);}
 function show(k,save=true){
-  closeDict();$('#nudge').hidden=true;R.page=k=clamp(k,0,R.pages.length-1);const p=R.pages[k],v=isV(),pad=Math.min(3,p.s),cut=Math.max(0,R.B-(p.e-p.s)),c2=cut/2,ws=p.s-pad-c2;
+  closeDict();closeSel();$('#nudge').hidden=true;R.page=k=clamp(k,0,R.pages.length-1);const p=R.pages[k],v=isV(),pad=Math.min(3,p.s),cut=Math.max(0,R.B-(p.e-p.s)),c2=cut/2,ws=p.s-pad-c2;
   // window shows [s-pad, e-pad], centred; the pad keeps furigana of the neighbouring line out of view
   flow.style.transform=v?`translateX(${ws}px)`:`translateY(${-ws}px)`;
   viewport.style.clipPath=v?`inset(0 ${c2}px 0 ${c2}px)`:`inset(${c2}px 0 ${c2}px 0)`;
@@ -741,7 +746,7 @@ function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();if(syncDirty)
   if(sum)showSheet('今回の要約',`『${sum.title}』`,askClaude('次の文章は、読者がたった今読み終えた日本語の本の一節です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+sum.text));
 }
 function setUi(on){readerEl.classList.toggle('ui',on);}
-function closePanels(){$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;closeDict();}
+function closePanels(){closeSel();$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;closeDict();}
 const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden;
 
 // touch + pencil: tap edges to turn, tap middle for controls, swipe to turn
@@ -750,6 +755,12 @@ const usesPen=e=>e.pointerType==='pen'||window.__penAll;
 stage.addEventListener('pointerdown',e=>{
   if(usesPen(e)&&R.ink&&!panelsOpen()&&!readerEl.classList.contains('ui')){pen={pts:[[e.clientX,e.clientY,e.pressure||.5]],moved:false,erased:false};try{stage.setPointerCapture(e.pointerId);}catch(x){}down=null;return;}
   down={x:e.clientX,y:e.clientY};});
+let lpT=null,lpAt=null,lpFired=false;
+const lpStop=()=>{clearTimeout(lpT);lpT=null;};
+stage.addEventListener('pointerdown',e=>{lpStop();lpFired=false;if(panelsOpen()||readerEl.classList.contains('ui'))return;lpAt=[e.clientX,e.clientY];
+  lpT=setTimeout(()=>{lpT=null;const g=hitChar(lpAt[0],lpAt[1]);if(g==null)return;lpFired=true;down=null;if(pen){pen=null;drawInk();}closeDict();const [a,b]=sentBounds(g);showSel(a,b);},480);});
+stage.addEventListener('pointermove',e=>{if(lpT&&Math.hypot(e.clientX-lpAt[0],e.clientY-lpAt[1])>8)lpStop();});
+stage.addEventListener('pointercancel',lpStop);
 stage.addEventListener('pointermove',e=>{if(!pen)return;const l=pen.pts[pen.pts.length-1],x=e.clientX,y=e.clientY;if(Math.hypot(x-l[0],y-l[1])<1.5)return;
   if(!pen.moved){if(Math.hypot(x-pen.pts[0][0],y-pen.pts[0][1])<7)return;pen.moved=true;closeDict();}
   const pt=[x,y,e.pressure||.5];
@@ -757,6 +768,8 @@ stage.addEventListener('pointermove',e=>{if(!pen)return;const l=pen.pts[pen.pts.
   else paint(ictx,[l,pt],inkColor(),S.size);
   pen.pts.push(pt);});
 stage.addEventListener('pointerup',e=>{
+  lpStop();if(lpFired){lpFired=false;down=null;pen=null;return;}
+  if(selOpen()){closeSel();down=null;pen=null;return;}
   if(pen){const pp=pen;pen=null;if(!pp.moved)down={x:pp.pts[0][0],y:pp.pts[0][1]};else{if(R.erase){if(pp.erased)saveInk();}else addStroke(pp.pts);return;}}
   if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;down=null;
   if(panelsOpen()){closePanels();return;}
@@ -951,6 +964,22 @@ function hitChar(x,y){
 }
 const dictEl=$('#dict');const dictOpen=()=>!dictEl.hidden;
 const clearHl=()=>{for(const x of readerEl.querySelectorAll('.hl'))x.remove();};
+// boxes for a stretch of text, limited to what is on the page being shown
+function markRange(s,e){const rgw=rangeOf(s,e),fr=flow.getBoundingClientRect(),p=R.pages[R.page],out=[];
+  for(const r of rgw.getClientRects()){if(r.width<2||r.height<2)continue;const [a,b]=coords(fr,r),c=(a+b)/2;if(c<p.s-1||c>=p.e)continue;out.push(r);}
+  for(const r of out.slice(0,400))readerEl.append(h('div',{class:'hl',style:`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`}));return out;}
+// the sentence around a character: back to the previous full stop or paragraph start, forward through the next full stop and closing quotes
+function sentBounds(g){const t=R.text,br=new Set(R.breaks),stop=/[。！？!?]/;let a=g,b=g+1;
+  while(a>0&&g-a<500&&!br.has(a)&&!stop.test(t[a-1]))a--;
+  while(b<t.length&&b-g<500&&!br.has(b)){b++;if(stop.test(t[b-1])){while(b<t.length&&!br.has(b)&&/[」』）)]/.test(t[b]))b++;break;}}
+  while(a<b-1&&/\s/.test(t[a]))a++;return [a,b];}
+const selEl=$('#selbar'),selOpen=()=>!selEl.hidden;
+function closeSel(){if(selEl.hidden)return;selEl.hidden=true;R.sel=null;clearHl();}
+function showSel(a,b){clearHl();R.sel={s:a,e:b};markRange(a,b);selEl.textContent='';const t=R.text;
+  const copy=async()=>{const txt=t.slice(R.sel.s,R.sel.e).trim();let ok=false;try{await navigator.clipboard.writeText(txt);ok=true;}catch(e){try{const ta=h('textarea',{style:'position:fixed;opacity:0'});ta.value=txt;document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove();}catch(x){}}
+    closeSel();toast(ok?'コピーしました':'コピーできませんでした');};
+  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
+  selEl.hidden=false;}
 function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;clearHl();}
 function rangeOf(s,e){const a=nodeAt(s),b=nodeAt(e-1),r=document.createRange();r.setStart(R.nodes[a].n,s-R.nodes[a].off);r.setEnd(R.nodes[b].n,e-R.nodes[b].off);return r;}
 function scanFrom(g){const text=R.text;for(let len=Math.min(14,text.length-g);len>=1;len--){const key=text.slice(g,g+len),ids=dictFind(key);if(ids)return {s:g,e:g+len,key,ids};}return null;}
@@ -989,9 +1018,7 @@ function lookupAt(g){
 }
 function showDict(s,e,kids){
   // the word is marked with our own boxes, one per piece of the word (Safari paints the built-in highlight over the whole page)
-  const rgw=rangeOf(s,e),rects=[...rgw.getClientRects()].filter(r=>r.width>=2&&r.height>=2);clearHl();
-  for(const r of rects.slice(0,40))readerEl.append(h('div',{class:'hl',style:`left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`}));
-  const rect=rects[0]||rgw.getBoundingClientRect();
+  closeSel();clearHl();const rects=markRange(s,e),rect=rects[0]||rangeOf(s,e).getBoundingClientRect();
   dictEl.textContent='';dictEl.append(...kids);dictEl.hidden=false;dictEl.scrollTop=0;dictEl.dataset.g=s;
   const pw=dictEl.offsetWidth,ph=dictEl.offsetHeight,vw=innerWidth,vh=innerHeight,gap=16;let x,y;
   if(isV()){x=rect.left-gap-pw;if(x<12)x=rect.right+gap;x=clamp(x,12,vw-pw-12);y=clamp(rect.top-10,12,vh-ph-12);}
