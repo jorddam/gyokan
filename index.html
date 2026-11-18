@@ -243,6 +243,11 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #selbar button{padding:9px 15px;border-radius:999px}
 #selbar .go{background:var(--accent);color:var(--on-accent);font-weight:600}
 #reader{-webkit-touch-callout:none}
+/* handing a sentence to the iPad's own text menu (Translate, Look Up): the text becomes selectable, furigana stays out of it */
+#reader.native{-webkit-touch-callout:default}
+#reader.native #flow{-webkit-user-select:text;user-select:text}
+#reader.native #flow rt{-webkit-user-select:none;user-select:none}
+#selbar .hint{padding:0 6px 0 14px}
 #nudge button{background:var(--accent);color:var(--on-accent);border-radius:999px;padding:8px 16px;font-weight:600;font-size:.86rem}
 .d-save{margin-left:auto;font-size:.78rem;padding:4px 11px;border-radius:999px;border:1px solid var(--line);color:var(--ink);white-space:nowrap}
 .d-save[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -831,11 +836,12 @@ const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden;
 let down=null,pen=null;const stage=$('#stage');
 const usesPen=e=>e.pointerType==='pen'||window.__penAll;
 stage.addEventListener('pointerdown',e=>{
+  if(R.native){down=null;return;}
   if(usesPen(e)&&R.ink&&!panelsOpen()&&!readerEl.classList.contains('ui')){pen={pts:[[e.clientX,e.clientY,e.pressure||.5]],moved:false,erased:false};try{stage.setPointerCapture(e.pointerId);}catch(x){}down=null;return;}
   down={x:e.clientX,y:e.clientY};});
 let lpT=null,lpAt=null,lpFired=false;
 const lpStop=()=>{clearTimeout(lpT);lpT=null;};
-stage.addEventListener('pointerdown',e=>{lpStop();lpFired=false;if(panelsOpen()||readerEl.classList.contains('ui'))return;lpAt=[e.clientX,e.clientY];
+stage.addEventListener('pointerdown',e=>{lpStop();lpFired=false;if(R.native||panelsOpen()||readerEl.classList.contains('ui'))return;lpAt=[e.clientX,e.clientY];
   lpT=setTimeout(()=>{lpT=null;const g=hitChar(lpAt[0],lpAt[1]);if(g==null)return;lpFired=true;down=null;if(pen){pen=null;drawInk();}closeDict();const [a,b]=sentBounds(g);showSel(a,b);},480);});
 stage.addEventListener('pointermove',e=>{if(lpT&&Math.hypot(e.clientX-lpAt[0],e.clientY-lpAt[1])>8)lpStop();});
 stage.addEventListener('pointercancel',lpStop);
@@ -846,7 +852,8 @@ stage.addEventListener('pointermove',e=>{if(!pen)return;const l=pen.pts[pen.pts.
   else paint(ictx,[l,pt],inkColor(),S.size);
   pen.pts.push(pt);});
 stage.addEventListener('pointerup',e=>{
-  lpStop();if(lpFired){lpFired=false;down=null;pen=null;return;}
+  lpStop();if(R.native){down=null;pen=null;return;}
+  if(lpFired){lpFired=false;down=null;pen=null;return;}
   if(selOpen()){closeSel();down=null;pen=null;return;}
   if(pen){const pp=pen;pen=null;if(!pp.moved)down={x:pp.pts[0][0],y:pp.pts[0][1]};else{if(R.erase){if(pp.erased)saveInk();}else addStroke(pp.pts);return;}}
   if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;down=null;
@@ -1064,11 +1071,17 @@ function sentBounds(g){const t=R.text,br=new Set(R.breaks),stop=/[。！？!?]/;
   while(b<t.length&&b-g<500&&!br.has(b)){b++;if(stop.test(t[b-1])){while(b<t.length&&!br.has(b)&&/[」』）)]/.test(t[b]))b++;break;}}
   while(a<b-1&&/\s/.test(t[a]))a++;return [a,b];}
 const selEl=$('#selbar'),selOpen=()=>!selEl.hidden;
-function closeSel(){if(selEl.hidden)return;selEl.hidden=true;R.sel=null;clearHl();}
+function closeSel(){if(selEl.hidden)return;selEl.hidden=true;R.sel=null;clearHl();
+  if(R.native){R.native=false;readerEl.classList.remove('native');try{getSelection().removeAllRanges();}catch(e){}}}
+// turn our highlighted sentence into a real system selection, so the iPad's own menu (翻訳, 調べる, 共有) can act on it
+function nativeSel(){const sl=R.sel;if(!sl)return;const r2=rangeOf(sl.s,sl.e);clearHl();readerEl.classList.add('native');R.native=true;
+  try{const se=getSelection();se.removeAllRanges();se.addRange(r2);}catch(e){}
+  selEl.textContent='';selEl.append(h('span',{class:'hint'},'選ばれた文を押すと、iPadのメニュー（翻訳・調べる）が出ます'),h('button',{class:'go',onclick:closeSel},'終わる'));selEl.hidden=false;}
+document.addEventListener('selectionchange',()=>{if(!R.native)return;clearTimeout(R.natT);R.natT=setTimeout(()=>{if(R.native&&getSelection().isCollapsed)closeSel();},400);});
 function showSel(a,b){clearHl();R.sel={s:a,e:b};markRange(a,b);selEl.textContent='';const t=R.text;
   const copy=async()=>{const txt=t.slice(R.sel.s,R.sel.e).trim();let ok=false;try{await navigator.clipboard.writeText(txt);ok=true;}catch(e){try{const ta=h('textarea',{style:'position:fixed;opacity:0'});ta.value=txt;document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove();}catch(x){}}
     closeSel();toast(ok?'コピーしました':'コピーできませんでした');};
-  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),h('button',{onclick:async()=>{const sl=R.sel,txt=t.slice(sl.s,sl.e).trim();await DB.put('quotes',{id:'q'+Date.now().toString(36),bookId:R.book.id,book:R.book.title,ch:R.ch,off:sl.s,g:R.before[R.ch]+sl.s,text:txt,added:Date.now()});closeSel();toast('書き抜きに保存しました');}},'保存'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
+  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),h('button',{onclick:async()=>{const sl=R.sel,txt=t.slice(sl.s,sl.e).trim();await DB.put('quotes',{id:'q'+Date.now().toString(36),bookId:R.book.id,book:R.book.title,ch:R.ch,off:sl.s,g:R.before[R.ch]+sl.s,text:txt,added:Date.now()});closeSel();toast('書き抜きに保存しました');}},'保存'),h('button',{onclick:nativeSel},'翻訳・調べる'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
   selEl.hidden=false;}
 function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;clearHl();}
 function rangeOf(s,e){const a=nodeAt(s),b=nodeAt(e-1),r=document.createRange();r.setStart(R.nodes[a].n,s-R.nodes[a].off);r.setEnd(R.nodes[b].n,e-R.nodes[b].off);return r;}
