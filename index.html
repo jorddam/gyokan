@@ -133,7 +133,10 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .simple input:checked{background:var(--accent)}
 .simple input:checked::after{transform:translateX(18px)}
 .simple:has(input:checked){color:var(--ink);font-weight:600}
+.chips{position:relative}
+.chips button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .folders{margin-bottom:12px}
+.folders .dflt::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:7px;vertical-align:middle}
 .folders button{border-radius:8px}
 .folders button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .chips input[type=text]{font:inherit;font-size:.84rem;color:var(--ink);background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:6px 10px;width:11em}
@@ -479,15 +482,25 @@ function renderShelf(root,books){
     if(cur){const hn=heroNode(cur,`${pct(cur)}% まで読みました`,'続きを読む');hn.classList.add('shelf-hero');root.append(hn);}}
   // folders
   const frow=h('div',{class:'chips folders'});
-  frow.append(h('button',{'aria-pressed':st.folder==='',onclick:()=>set({folder:''})},`すべての本 ${books.length}`));
-  frow.append(h('button',{'aria-pressed':st.folder===FAV,onclick:()=>set({folder:FAV})},`★ お気に入り ${books.filter(b=>b.fav).length}`));
-  for(const f of folders)frow.append(h('button',{'aria-pressed':st.folder===f,onclick:()=>set({folder:f})},`${f} ${books.filter(b=>b.folder===f).length}`));
+  // hold a folder (or favourites) to make it the view the library opens with
+  const home=LS.get('homeFolder','');
+  const chip=(key,label)=>{let fired=false,t=null;const btn=h('button',{'aria-pressed':st.folder===key,class:home&&home===key?'dflt':null},label);
+    const open=()=>{fired=true;frow.querySelectorAll('.menu').forEach(m=>m.remove());const isD=home===key;
+      frow.append(h('div',{class:'menu',style:`left:${btn.offsetLeft}px;top:${btn.offsetTop+btn.offsetHeight+6}px;right:auto;bottom:auto`,onclick:e=>e.stopPropagation()},
+        h('button',{class:'plain',onclick:()=>{LS.set('homeFolder',isD?'':key);toast(isD||key===''?'起動時は「すべての本」を開きます':'起動時にこの表示を開きます');renderHome();}},isD&&key!==''?'起動時の表示から外す':'起動時にこの表示を開く')));};
+    btn.addEventListener('pointerdown',()=>{fired=false;clearTimeout(t);t=setTimeout(open,480);});
+    for(const ev of ['pointerup','pointerleave','pointercancel'])btn.addEventListener(ev,()=>clearTimeout(t));
+    btn.addEventListener('contextmenu',e=>{e.preventDefault();clearTimeout(t);if(!fired)open();});
+    btn.addEventListener('click',e=>{if(fired){fired=false;e.stopPropagation();return;}set({folder:key});});
+    return btn;};
+  frow.append(chip('',`すべての本 ${books.length}`),chip(FAV,`★ お気に入り ${books.filter(b=>b.fav).length}`));
+  for(const f of folders)frow.append(chip(f,`${f} ${books.filter(b=>b.folder===f).length}`));
   const addF=h('button',{onclick:()=>{const inp=h('input',{type:'text',placeholder:'フォルダ名','aria-label':'新しいフォルダ名',maxlength:24});
     const done=()=>{const n=inp.value.trim();if(n){if(!folders.includes(n)){folders.push(n);LS.set('folders',folders);}set({folder:n});}else renderHome();};
     inp.onkeydown=e=>{if(e.key==='Enter')done();else if(e.key==='Escape')renderHome();};inp.onblur=done;addF.replaceWith(inp);inp.focus();}},'＋ フォルダ');
   frow.append(addF);
   if(st.folder&&st.folder!==FAV){let armed=false;const del=h('button',{class:'del',onclick:async()=>{if(!armed){armed=true;del.textContent='もう一度押すと削除（本は残ります）';return;}
-    for(const b of books)if(b.folder===st.folder){b.folder='';await DB.put('books',b);}LS.set('folders',folders.filter(x=>x!==st.folder));set({folder:''});}},'このフォルダを削除');frow.append(h('span',{class:'gap'}),del);}
+    for(const b of books)if(b.folder===st.folder){b.folder='';await DB.put('books',b);}LS.set('folders',folders.filter(x=>x!==st.folder));if(home===st.folder)LS.set('homeFolder','');set({folder:''});}},'このフォルダを削除');frow.append(h('span',{class:'gap'}),del);}
   root.append(frow);
   // status filter + sort
   const inFolder=books.filter(b=>!st.folder||(st.folder===FAV?b.fav:b.folder===st.folder)),chips=h('div',{class:'chips'});
@@ -556,7 +569,7 @@ function startStudy(queue){
 
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
-  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),
+  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),home:LS.get('homeFolder',''),
     folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab'),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
@@ -570,6 +583,7 @@ async function restoreBackup(data){
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
+  if(data.home!=null)LS.set('homeFolder',data.home);
   if(data.log){const log=LS.get('log',{});for(const k in data.log)log[k]=Math.max(log[k]||0,data.log[k]);LS.set('log',log);}
   if(data.folders)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
   if(data.settings){Object.assign(S,data.settings);saveSettings();applySettings();}
@@ -1027,7 +1041,9 @@ function showDict(s,e,kids){
 }
 
 /* ---------- start ---------- */
-(async()=>{applySettings();await DB.open();await renderHome();
+(async()=>{applySettings();await DB.open();
+  LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
+  await renderHome();
   if(syncCfg())syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});
   try{if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
   window.__ready=true;})();
