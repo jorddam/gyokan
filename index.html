@@ -144,6 +144,11 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .day{display:flex;align-items:baseline;gap:12px;margin:4px 0 18px}
 .day h2{font-family:var(--mincho);font-size:1.5rem;font-weight:600;margin:0;letter-spacing:.06em}
 .day span{color:var(--mute);font-size:.9rem}
+.goals{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0 0 24px}
+.goals .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--mute)}
+.goals .lab b{font-size:1.05rem;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+.goals .lab b span{font-size:.8rem;color:var(--mute);font-weight:400}
+.goals .prog{height:3px;margin-top:7px}
 .plan{list-style:none;margin:30px 0 0;padding:0;border-top:1px solid var(--line)}
 .plan li{border-bottom:1px solid var(--line)}
 .plan button{display:grid;grid-template-columns:44px 1fr auto;gap:16px;align-items:center;width:100%;padding:14px 4px;text-align:start}
@@ -413,10 +418,20 @@ function getPlan(books){let p=LS.get('plan',null);
   if(p&&p.date===todayStr()){p.items=p.items.filter(it=>books.some(b=>b.id===it.id));if(p.items.length)return p;}
   return makePlan(books);}
 const itemState=(it,b)=>{const g=bookG(b),done=!!it.done||g>=it.target-1;return {done,frac:done?1:clamp((g-it.start)/Math.max(1,it.target-it.start),0,1)};};
+// page goals: today, this month, this year. All three come from the one daily number in settings.
+function goalsNode(){
+  const log=LS.get('log',{}),d=new Date(),y=d.getFullYear(),t=todayStr(),ym=t.slice(0,7),yy=t.slice(0,4);let day=0,mon=0,yr=0;
+  for(const k in log){const p=log[k]/PAGE_CHARS;if(k===t)day+=p;if(k.startsWith(ym))mon+=p;if(k.startsWith(yy))yr+=p;}
+  const dim=new Date(y,d.getMonth()+1,0).getDate(),diy=Math.round((new Date(y+1,0,1)-new Date(y,0,1))/DAY),box=h('div',{class:'goals'});
+  for(const [label,val,goal] of [['今日',day,S.pages],['今月',mon,S.pages*dim],['今年',yr,S.pages*diy]])
+    box.append(h('div',null,h('div',{class:'lab'},h('span',null,label),h('b',null,String(Math.floor(val)),h('span',null,` / ${goal}ページ`))),h('div',{class:'prog'},h('i',{style:`width:${Math.min(100,Math.round(val/goal*100))}%`}))));
+  return box;
+}
 function renderToday(root,books){
   if(!books.length){root.append(emptyShelf());return;}
   const plan=getPlan(books),d=new Date();
   root.append(h('div',{class:'day'},h('h2',null,`${d.getMonth()+1}月${d.getDate()}日`),h('span',null,'日月火水木金土'[d.getDay()]+'曜日')));
+  root.append(goalsNode());
   if(!plan.items.length){root.append(h('div',{class:'empty'},h('p',{class:'big'},'今日読む本がありません'),h('p',null,'本棚で本を開くか「読書中」にすると、毎日の分がここに出ます。'),h('button',{class:'add',onclick:()=>setView('shelf')},'本棚を開く')));return;}
   const rows=plan.items.map(it=>{const b=books.find(x=>x.id===it.id);return Object.assign({it,b},itemState(it,b));});
   const next=rows.find(r=>!r.done),left=Math.ceil(rows.reduce((a,r)=>a+r.it.pages*(1-r.frac),0));
@@ -514,7 +529,7 @@ function startStudy(queue){
 
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
-  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),
+  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),
     folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab')};}
 async function exportBackup(){const data=JSON.stringify(await makeBackup()),name=`gyokan-backup-${todayStr()}.json`,file=new File([data],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});return;}}catch(e){if(e&&e.name==='AbortError')return;}
@@ -524,6 +539,7 @@ async function restoreBackup(data){
   const books=await DB.all('books'),pending=[];let nb=0;
   for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
+  if(data.log){const log=LS.get('log',{});for(const k in data.log)log[k]=Math.max(log[k]||0,data.log[k]);LS.set('log',log);}
   if(data.folders)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
   if(data.settings){Object.assign(S,data.settings);saveSettings();applySettings();}
   return {books:nb,pending:pending.length,vocab:(data.vocab||[]).length};
@@ -531,7 +547,7 @@ async function restoreBackup(data){
 function renderSettings(root){
   const out=h('output',null,String(S.pages)),bump=n=>{S.pages=clamp(S.pages+n,3,60);saveSettings();out.textContent=S.pages;};
   root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'設定'))),h('div',{class:'set'},
-    S.simple?null:h('div',{class:'row'},h('span',null,'一日のページ数',h('small',null,'1ページは600字。読書中の本に順番に割り振ります。明日の分から変わります。')),h('div',{class:'step'},h('button',{'aria-label':'減らす',onclick:()=>bump(-1)},'−'),out,h('button',{'aria-label':'増やす',onclick:()=>bump(1)},'＋'))),
+    S.simple?null:h('div',{class:'row'},h('span',null,'一日のページ数',h('small',null,'1ページは600字。読書中の本に順番に割り振ります。月と年の目標もこの数から決まります。')),h('div',{class:'step'},h('button',{'aria-label':'減らす',onclick:()=>bump(-1)},'−'),out,h('button',{'aria-label':'増やす',onclick:()=>bump(1)},'＋'))),
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
     h('div',{class:'row'},h('span',null,'文字・紙の色・組み方',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
 }
@@ -602,6 +618,7 @@ function show(k,save=true){
 function currentOff(){return pageOffset(R.page);}
 function hud(){
   const b=R.book,off=currentOff(),g=R.before[R.ch]+off,last=R.ch===b.chapters.length-1&&R.page===R.pages.length-1;
+  if(R.pend!=null){const dl=g-R.pend;R.pend=null;if(dl>0&&dl<6000)addLog(dl);}
   const frac=last?1:(b.total?g/b.total:0);R.frac=frac;R.g=g;
   let title='';for(let i=R.ch;i>=0&&!title;i--)title=b.chapters[i].title;
   // today's portion for this book: count down, and say so once when the page holding the stopping point is reached
@@ -627,13 +644,14 @@ async function loadChapter(ch,target){
   }finally{R.busy=false;}
 }
 function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const off=currentOff();geometry();measure();show(pageOfOffset(off));}
-function next(){if(R.page<R.pages.length-1)show(R.page+1);else if(R.ch<R.book.chapters.length-1)loadChapter(R.ch+1,{off:0});}
+function addLog(chars){const log=LS.get('log',{}),k=todayStr();log[k]=(log[k]||0)+chars;LS.set('log',log);}
+function next(){if(R.page<R.pages.length-1){R.pend=R.g;show(R.page+1);}else if(R.ch<R.book.chapters.length-1){R.pend=R.g;loadChapter(R.ch+1,{off:0});}}
 function prev(){if(R.page>0)show(R.page-1);else if(R.ch>0)loadChapter(R.ch-1,{end:true});}
 function gotoGlobal(g){const b=R.book;let ch=0;while(ch<b.chapters.length-1&&g>=R.before[ch+1])ch++;const off=g-R.before[ch];if(ch===R.ch)show(pageOfOffset(off));else loadChapter(ch,{off});}
 async function openBook(id){
   const book=await DB.get('books',id),content=await DB.get('content',id);if(!book||!content){toast('本を開けませんでした');return;}
   $('#study').hidden=true;const plan=LS.get('plan',null);R.item=!S.simple&&plan&&plan.date===todayStr()?plan.items.find(x=>x.id===id)||null:null;$('#nudge').hidden=true;
-  R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
+  R.pend=null;R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
   $('#rtitle').textContent=book.title;
   const list=$('#tocList');list.textContent='';
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
