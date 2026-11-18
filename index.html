@@ -260,6 +260,20 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .d-entry li::marker{color:var(--mute);font-size:.8em}
 .d-pos{display:block;font-size:.74rem;color:var(--mute)}
 .d-part{font-size:.78rem;color:var(--mute);padding-top:10px}
+.d-kanji{padding:10px 0 4px;border-top:1px solid var(--line)}
+.kj{display:grid;grid-template-columns:2.6rem 1fr;gap:2px 12px;padding:7px 0;align-items:start}
+.kj b{font-family:var(--mincho);font-size:2rem;font-weight:600;line-height:1.15;grid-row:span 3}
+.kj .m{font-size:.9rem}
+.kj .rd{font-size:.82rem;color:var(--mute)}
+.kj .rd i{font-style:normal;font-size:.7rem;border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-right:6px}
+.kj .x{font-size:.72rem;color:var(--mute)}
+.qbook{font-family:var(--mincho);font-size:1.05rem;font-weight:600;margin:26px 0 4px;letter-spacing:.04em}
+.quotes{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.quotes li{border-bottom:1px solid var(--line);padding:14px 4px}
+.quotes .q{font-family:var(--mincho);font-size:1.08rem;line-height:1.95;margin:0 0 6px}
+.quotes .acts{display:flex;gap:18px;font-size:.82rem;color:var(--mute)}
+.quotes .acts button{text-decoration:underline;text-underline-offset:3px}
+.quotes .acts span{margin-right:auto}
 .d-note{padding:12px 0;color:var(--mute)}
 @media (prefers-reduced-motion:reduce){.chrome{transition:none}}
 </style>
@@ -269,7 +283,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <div class="bar">
     <h1 class="mark">行間</h1>
     <nav class="tabs" aria-label="画面">
-      <button data-view="today">今日</button><button data-view="shelf">本棚</button><button data-view="vocab">単語</button><button data-view="settings">設定</button>
+      <button data-view="today">今日</button><button data-view="shelf">本棚</button><button data-view="vocab">単語</button><button data-view="quotes">書き抜き</button><button data-view="settings">設定</button>
     </nav>
     <button class="add" id="addBtn">本を追加</button>
     <label class="simple"><input type="checkbox" id="simpleT"><span>シンプル表示</span></label>
@@ -319,8 +333,8 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const PAGE_CHARS=600; // one "page" = 600 characters, independent of font size
 
 /* ---------- storage ---------- */
-const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new Map(),notes:new Map()},
-  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',4);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab','ink','notes'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
+const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new Map(),notes:new Map(),quotes:new Map()},
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',5);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab','ink','notes','quotes'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
     try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{});}catch(e){}},
   run(store,mode,fn){if(!this.db)return Promise.resolve(fn(null));return new Promise((res,rej)=>{let out;try{const tx=this.db.transaction(store,mode);const rq=fn(tx.objectStore(store));if(rq)rq.onsuccess=()=>{out=rq.result;};tx.oncomplete=()=>res(out);tx.onerror=tx.onabort=()=>rej(tx.error);}catch(e){rej(e);}});},
   get(s,id){return this.run(s,'readonly',o=>o?o.get(id):null).then(v=>this.db?v:this.mem[s].get(id));},
@@ -440,7 +454,7 @@ async function renderHome(){
   for(const t of document.querySelectorAll('.tabs button')){t.setAttribute('aria-current',t.dataset.view===view);t.hidden=S.simple&&t.dataset.view==='today';}
   $('#addBtn').hidden=view!=='shelf'||!books.length;
   const root=$('#view');root.textContent='';
-  if(view==='shelf')renderShelf(root,books);else if(view==='vocab')await renderVocab(root);else if(view==='settings')renderSettings(root);else renderToday(root,books);
+  if(view==='shelf')renderShelf(root,books);else if(view==='vocab')await renderVocab(root);else if(view==='quotes')await renderQuotes(root,books);else if(view==='settings')renderSettings(root);else renderToday(root,books);
 }
 const emptyShelf=()=>h('div',{class:'empty'},h('p',{class:'big'},'本棚は空です'),h('p',null,'EPUBを追加すると、ここに並びます。'),h('button',{class:'add',onclick:()=>$('#file').click()},'EPUBを追加'));
 function heroNode(b,note,btn){return h('button',{class:'hero',onclick:()=>openBook(b.id),'aria-label':`${b.title}を読む`},
@@ -548,6 +562,21 @@ function renderShelf(root,books){
   root.append(list);
 }
 
+/* saved sentences: kept from the long-press bar while reading */
+async function renderQuotes(root,books){
+  const all=(await DB.all('quotes')).sort((a,b)=>b.added-a.added);
+  root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'書き抜き'),h('p',null,all.length?`${all.length}文`:'読書中に文を長押しして「保存」を選ぶと、ここに集まります。'))));
+  const seen=[];for(const q of all)if(!seen.includes(q.bookId))seen.push(q.bookId);
+  for(const id of seen){const mine=all.filter(q=>q.bookId===id).sort((a,b)=>a.g-b.g),bk=books.find(b=>b.id===id),ul=h('ul',{class:'quotes'});
+    root.append(h('div',{class:'qbook'},`『${mine[0].book}』`));
+    for(const q of mine){let where='';if(bk)for(let i=q.ch;i>=0&&!where;i--)where=(bk.chapters[i]||{}).title||'';
+      ul.append(h('li',null,h('p',{class:'q'},q.text),h('div',{class:'acts'},h('span',null,where),
+        bk?h('button',{onclick:async()=>{bk.pos={ch:q.ch,off:q.off};await DB.put('books',bk);openBook(bk.id);}},'本文を開く'):null,
+        h('button',{onclick:async()=>{try{await navigator.clipboard.writeText(q.text);toast('コピーしました');}catch(e){toast('コピーできませんでした');}}},'コピー'),
+        h('button',{onclick:async()=>{await DB.del('quotes',q.id);renderHome();}},'削除'))));}
+    root.append(ul);}
+}
+
 /* vocab bank + study (spaced repetition with two answers) */
 const DAY=86400000,dayStart=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime();};
 const markSent=v=>{const p=h('p',{class:'sent'});p.append(v.sent.slice(0,v.ws),h('mark',null,v.sent.slice(v.ws,v.we)),v.sent.slice(v.we));return p;};
@@ -585,6 +614,7 @@ function startStudy(queue){
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),home:LS.get('homeFolder',''),
     folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab'),
+    quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
 async function exportBackup(){const data=JSON.stringify(await makeBackup()),name=`gyokan-backup-${todayStr()}.json`,file=new File([data],name,{type:'application/json'});
@@ -595,6 +625,7 @@ async function restoreBackup(data){
   const books=await DB.all('books'),pending=[];let nb=0;
   for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
+  for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
   if(data.home!=null)LS.set('homeFolder',data.home);
@@ -930,7 +961,7 @@ async function openNotes(){const el=$('#notes'),was=el.hidden;closePanels();if(!
   el.hidden=false;}
 
 /* ---------- dictionary: offline JMdict + word splitting (no AI) ---------- */
-const Dict={state:'idle',ready:null,bytes:null,lines:null,E:0,K:0,tok:null};
+const Dict={state:'idle',ready:null,bytes:null,lines:null,E:0,K:0,tok:null,kanji:null};
 const enc=new TextEncoder(),dec=new TextDecoder();
 async function gunzip(buf){return new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());}
 // big files may be stored whole (name.bin) or in numbered parts (name.0.bin, name.1.bin, …)
@@ -941,7 +972,8 @@ const getBin=async u=>{const stem=u.replace(/\.bin$/,''),parts=[];
 function dictStart(){
   if(Dict.ready)return Dict.ready;Dict.state='loading';
   Dict.ready=(async()=>{
-    const [jm,kb]=await Promise.all([getBin('jmdict.bin'),getBin('kuromoji.bin')]);
+    const [jm,kb,kj]=await Promise.all([getBin('jmdict.bin'),getBin('kuromoji.bin'),getBin('kanji.bin').catch(()=>null)]);
+    if(kj)try{const m=new Map();for(const ln of dec.decode(await gunzip(kj)).split('\n')){const f=ln.split('\t');if(f[0])m.set(f[0],f);}Dict.kanji=m;}catch(e){}
     const B=await gunzip(jm);let n=0;for(let i=0;i<B.length;i++)if(B[i]===10)n++;
     const L=new Uint32Array(n+1);let k=0;L[k++]=0;for(let i=0;i<B.length;i++)if(B[i]===10)L[k++]=i+1;
     const head=dec.decode(B.subarray(0,L[1]-1)).split(' ');if(head[0]!=='GYOKAN1')throw new Error('辞書の形式が違います');
@@ -1036,7 +1068,7 @@ function closeSel(){if(selEl.hidden)return;selEl.hidden=true;R.sel=null;clearHl(
 function showSel(a,b){clearHl();R.sel={s:a,e:b};markRange(a,b);selEl.textContent='';const t=R.text;
   const copy=async()=>{const txt=t.slice(R.sel.s,R.sel.e).trim();let ok=false;try{await navigator.clipboard.writeText(txt);ok=true;}catch(e){try{const ta=h('textarea',{style:'position:fixed;opacity:0'});ta.value=txt;document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove();}catch(x){}}
     closeSel();toast(ok?'コピーしました':'コピーできませんでした');};
-  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
+  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),h('button',{onclick:async()=>{const sl=R.sel,txt=t.slice(sl.s,sl.e).trim();await DB.put('quotes',{id:'q'+Date.now().toString(36),bookId:R.book.id,book:R.book.title,ch:R.ch,off:sl.s,g:R.before[R.ch]+sl.s,text:txt,added:Date.now()});closeSel();toast('書き抜きに保存しました');}},'保存'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
   selEl.hidden=false;}
 function closeDict(){if(dictEl.hidden)return;dictEl.hidden=true;clearHl();}
 function rangeOf(s,e){const a=nodeAt(s),b=nodeAt(e-1),r=document.createRange();r.setStart(R.nodes[a].n,s-R.nodes[a].off);r.setEnd(R.nodes[b].n,e-R.nodes[b].off);return r;}
@@ -1058,6 +1090,13 @@ function sentenceAround(s,e){const t=R.text,br=new Set(R.breaks),stop=/[。！�
   while(a>0&&s-a<80&&!br.has(a)&&!stop.test(t[a-1]))a--;
   while(b<t.length&&b-e<80&&!br.has(b)){b++;if(stop.test(t[b-1]))break;}
   const raw=t.slice(a,b),lead=raw.length-raw.trimStart().length;return {text:raw.trim(),ws:s-a-lead,we:e-a-lead};}
+// one block per kanji in the word: meanings, on and kun readings, stroke count and school grade
+function kanjiNode(word){if(!Dict.kanji)return null;const box=h('div',{class:'d-kanji'}),done=new Set();
+  for(const ch of word){if(done.has(ch))continue;done.add(ch);const f=Dict.kanji.get(ch);if(!f)continue;
+    const g=+f[2],grade=g>=1&&g<=6?`小学${g}年`:g===8?'中学':g===9||g===10?'人名用':'',extra=[f[1]?`${f[1]}画`:'',grade].filter(Boolean).join('　');
+    box.append(h('div',{class:'kj'},h('b',null,ch),h('div',{class:'m'},f[6]||''),h('div',{class:'rd'},f[4]?h('span',null,h('i',null,'音'),f[4]+'　'):null,f[5]?h('span',null,h('i',null,'訓'),f[5]):null),h('div',{class:'x'},extra)));
+    if(box.children.length>=4)break;}
+  return box.children.length?box:null;}
 function lookupAt(g){
   const ch=R.text[g];if(!ch||NOWORD.test(ch))return false;
   if(Dict.state==='error'){if(!Dict.told){Dict.told=true;toast('辞書ファイル（jmdict.bin・kuromoji.bin・kuromoji.js）が見つからないため、辞書は使えません',5200);}return false;}
@@ -1070,8 +1109,9 @@ function lookupAt(g){
   if(!res)res={s:g,e:g+1,key:ch,ids:null};
   const kids=[],surface=R.text.slice(res.s,res.e);
   if(res.ids){if(surface!==res.key)kids.push(h('div',{class:'d-from'},surface));for(const i of res.ids.slice(0,4))kids.push(entryNode(i,res.key,{s:res.s,e:res.e}));
-    if(part&&part.key!==res.key){kids.push(h('div',{class:'d-part'},'この部分'));kids.push(entryNode(part.ids[0],part.key,{s:res.s,e:res.e}));}}
-  else kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));
+    if(part&&part.key!==res.key){kids.push(h('div',{class:'d-part'},'この部分'));kids.push(entryNode(part.ids[0],part.key,{s:res.s,e:res.e}));}
+    const kn=kanjiNode(res.key);if(kn)kids.push(kn);}
+  else{kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));const kn=kanjiNode(surface);if(kn)kids.push(kn);}
   showDict(res.s,res.e,kids);dictEl.dataset.g=g;return true;
 }
 function showDict(s,e,kids){
