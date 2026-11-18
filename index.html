@@ -493,7 +493,7 @@ function renderShelf(root,books){
   for(const [k,label] of [['recent','最近読んだ順'],['added','追加した順'],['title','題名順'],['author','著者順'],['progress','進んでいる順']])sel.append(h('option',{value:k,selected:st.sort===k},label));
   chips.append(h('span',{class:'gap'}),sel);root.append(chips);
   const cmp={recent:(a,b)=>(b.opened||b.added)-(a.opened||a.added),added:(a,b)=>b.added-a.added,title:(a,b)=>a.title.localeCompare(b.title,'ja'),author:(a,b)=>(a.author||'').localeCompare(b.author||'','ja')||a.title.localeCompare(b.title,'ja'),progress:(a,b)=>(b.progress||0)-(a.progress||0)}[st.sort]||(()=>0);
-  const shown=inFolder.filter(b=>st.filter==='all'||b.status===st.filter).sort(cmp),list=h('ul',{class:'shelf'});
+  const shown=inFolder.filter(b=>st.filter==='all'||b.status===st.filter).sort((x,y)=>(!!y.fav-!!x.fav)||cmp(x,y)),list=h('ul',{class:'shelf'}); // favorites first, then the chosen order
   if(!shown.length)root.append(h('p',{class:'b-author',style:'margin:8px 0 0'},st.folder===FAV?'お気に入りはまだありません。表紙の☆を押すと、ここに集まります。':st.folder?'このフォルダにはまだ本がありません。本の「⋯」から入れられます。':'当てはまる本がありません。'));
   for(const b of shown){
     const li=h('li',{class:'book'});
