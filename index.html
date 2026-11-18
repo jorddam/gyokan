@@ -1,12 +1,15 @@
 <!DOCTYPE html>
-<html lang="ja" data-theme="shiro">
+<html lang="ja" data-theme="sumi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="行間">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121514">
+<meta name="darkreader-lock">
 <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAABq0lEQVR42u3dsQ2DMBBA0RB5GgbIFvRZhI4NWIRZMlW6NLEosJDP9nsVNCd0+gI6T/OyPSDnaQWIA3EgDsSBOBAH4kAciANxgDgQB+JAHIgDcSAOxIE4EAeIA3EgDsSBOBAH4kAc9CaFeprPsf6uX+/dTG+OzHb+b80cN47sOgp3NPLMfuI4WcTlHY080w8p4kAciANxIA7EgThAHIgDcSAOxIE4EAfiQByIA8SBOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByXnRzdHuRUd3GE60MZ4sinoIzqUqinEYQ3B+JAHIgDcYA4EAfiQByIA3EgDsSBOBAHiANxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBAH4gBxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBBHdHecct3KTHHUOeW6lZniqHPKdSszy03zsvm44ocUcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQBx05Qvjz1hqOo4ADQAAAABJRU5ErkJggg==">
 <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAABq0lEQVR42u3dsQ2DMBBA0RB5GgbIFvRZhI4NWIRZMlW6NLEosJDP9nsVNCd0+gI6T/OyPSDnaQWIA3EgDsSBOBAH4kAciANxgDgQB+JAHIgDcSAOxIE4EAeIA3EgDsSBOBAH4kAc9CaFeprPsf6uX+/dTG+OzHb+b80cN47sOgp3NPLMfuI4WcTlHY080w8p4kAciANxIA7EgThAHIgDcSAOxIE4EAfiQByIA8SBOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQByXnRzdHuRUd3GE60MZ4sinoIzqUqinEYQ3B+JAHIgDcYA4EAfiQByIA3EgDsSBOBAHiANxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBAH4gBxIA7EgTgQB+JAHIgDcSAOEAfiQByIA3EgDsSBOBBHdHecct3KTHHUOeW6lZniqHPKdSszy03zsvm44ocUcSAOxIE4EAfiQByIA3GAOBAH4kAciANxIA7EgTgQB4gDcSAOxIE4EAfiQBx05Qvjz1hqOo4ADQAAAABJRU5ErkJggg==">
 <title>行間 Gyokan</title>
@@ -279,10 +282,6 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <div id="nudge" hidden></div>
   <div id="aa" class="pop" hidden>
     <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
-    <div class="row"><span>紙の色</span><div class="seg" id="segTheme">
-      <button class="sw" data-theme-v="shiro" style="background:#fcfcf9" aria-label="白"></button>
-      <button class="sw" data-theme-v="kinari" style="background:#efe7d3" aria-label="生成り"></button>
-      <button class="sw" data-theme-v="sumi" style="background:#161918" aria-label="墨"></button></div></div>
     <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
     <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
     <div class="row"><span>手書き</span><div class="seg" id="segInk"><button data-ink-v="draw" aria-pressed="true">書く</button><button data-ink-v="erase">消す</button><button data-ink-undo="1">戻す</button></div></div>
@@ -315,7 +314,8 @@ const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.get
 const bookG=b=>{let g=0;for(let i=0;i<b.pos.ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return g+(b.pos.off||0);};
 const sameBook=(a,b)=>a.title===b.title&&(a.author||'')===(b.author||'')&&a.total===b.total;
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
-function applySettings(){const d=document.documentElement;d.dataset.theme=S.theme;d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
+function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
+  d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
 
@@ -617,7 +617,7 @@ function renderSettings(root){
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
     syncRow(),
     S.simple?null:keyRow(),
-    h('div',{class:'row'},h('span',null,'文字・紙の色・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
+    h('div',{class:'row'},h('span',null,'文字・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
 }
 $('#backupFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const r=await restoreBackup(JSON.parse(await f.text()));toast(`読み込みました：本${r.books}冊、単語${r.vocab}語`+(r.pending?`（未追加の本${r.pending}冊は追加時に反映）`:''),5000);renderHome();}catch(err){toast(err.message||'読み込めませんでした',4200);}};
 for(const t of document.querySelectorAll('.tabs button'))t.onclick=()=>setView(t.dataset.view);
