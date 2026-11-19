@@ -1070,13 +1070,34 @@ function mergeOk(ids,key,glue){
 }
 // 流せる → 流す: the tokenizer treats "can do" verbs as words of their own, the dictionary only lists the plain verb
 const POT={'える':'う','ける':'く','げる':'ぐ','せる':'す','てる':'つ','ねる':'ぬ','べる':'ぶ','める':'む','れる':'る'};
-function plainVerb(t,lem){if(t.pos!=='動詞'||lem.length<3)return null;const m=POT[lem.slice(-2)];if(!m)return null;
-  const key=lem.slice(0,-2)+m,ids=dictFind(key);return ids&&ids.some(i=>dictEntry(i).senses.some(x=>/verb/i.test(x.pos)))?{j:-1,key,ids}:null;}
+// 買わす → 買う, 食べさす → 食べる: the short "make someone do" form
+const CAU={'わす':'う','かす':'く','がす':'ぐ','さす':'す','たす':'つ','なす':'ぬ','ばす':'ぶ','ます':'む','らす':'る'};
+const isVerb=ids=>ids.some(i=>dictEntry(i).senses.some(x=>/verb/i.test(x.pos)));
+function plainVerb(t,lem){if(t.pos!=='動詞'||lem.length<3)return null;const tail=lem.slice(-2),st=lem.slice(0,-2),c=[];
+  if(POT[tail])c.push(st+POT[tail]);if(CAU[tail])c.push(st+CAU[tail]);if(tail==='さす')c.push(st+'る');
+  for(const key of c){const ids=dictFind(key);if(ids&&isVerb(ids))return {j:-1,key,ids};}return null;}
+// 書き → 書く, 食べ → 食べる: a bare verb stem
+const STEM={'い':'う','き':'く','ぎ':'ぐ','し':'す','ち':'つ','に':'ぬ','び':'ぶ','み':'む','り':'る'};
+function stemVerb(x){if(x.length<2||!KANJI.test(x))return null;const c=[],l=x.slice(-1);if(STEM[l])c.push(x.slice(0,-1)+STEM[l]);c.push(x+'る');
+  for(const key of c){const ids=dictFind(key);if(ids&&isVerb(ids))return {j:-1,key,ids};}return null;}
+// 切れ → 切る, 立て → 立つ: a bare command form
+const IMP={'え':'う','け':'く','げ':'ぐ','せ':'す','て':'つ','ね':'ぬ','べ':'ぶ','め':'む','れ':'る'};
+function verbOf(x){const sv=stemVerb(x);if(sv)return sv;if(x.length<2||!KANJI.test(x)||!IMP[x.slice(-1)])return null;const key=x.slice(0,-1)+IMP[x.slice(-1)],ids=dictFind(key);return ids&&isVerb(ids)?{key,ids}:null;}
+// a lone kanji the tokenizer took for a noun, followed by kana that conjugates it (歩|かされる, 入|ろう): find the verb by trying each ending
+const GROW={'う':'わいうえおっ','く':'かきくけこい','ぐ':'がぎぐげごい','す':'さしすせそし','つ':'たちつてとっ','ぬ':'なにぬねのん','ぶ':'ばびぶべぼん','む':'まみむめもん','る':'らりるれろっ'};
+const GNEXT=['なずれせさぬざねす','またなそす',null,'ばるなまたてずら','う','てたでだちじとど'],INEXT='ろよらさまなたて';
+function rescueVerb(k,a,b){
+  for(const e in GROW){const r=GROW[e];for(let q=0;q<6;q++){if(r[q]!==a)continue;const nx=GNEXT[q];if(nx&&!(b&&nx.includes(b)))continue;if(q===2&&!b)continue;
+    const ids=dictFind(k+e);if(ids&&!ids.weak&&isVerb(ids))return {key:k+e,ids};}}
+  if(INEXT.includes(a)){const ids=dictFind(k+'る');if(ids&&!ids.weak&&ids.some(i=>dictEntry(i).senses.some(x=>/ichidan/i.test(x.pos))))return {key:k+'る',ids};}
+  return null;}
 // group tokens into dictionary words: longest JMdict match from each token, then attach trailing auxiliaries
 function groupTokens(toks,seg,base,out){
   const n=toks.length,P=[];let cur=0;
   for(const t of toks){let s=seg.indexOf(t.surface_form,cur);if(s<0)s=cur;P.push(s);cur=s+t.surface_form.length;}
-  const lemma=t=>t.basic_form&&t.basic_form!=='*'?t.basic_form:t.surface_form;
+  // 行って is read as 行く unless it follows を (会議を行った); the other verb is still listed second in the popup
+  for(let q=1;q<n;q++)if(toks[q].surface_form==='行っ'&&toks[q-1].surface_form==='を')toks[q].okonau=true;
+  const lemma=t=>t.surface_form==='行っ'&&!t.okonau?'行く':t.basic_form&&t.basic_form!=='*'?t.basic_form:t.surface_form;
   let i=0;
   while(i<n){const t=toks[i];if(t.pos==='記号'||NOWORD.test(t.surface_form)){i++;continue;}
     let best=null,surf='',allAux=true,glue=false;
@@ -1086,17 +1107,27 @@ function groupTokens(toks,seg,base,out){
       if(j>i&&allAux)allAux=tj.pos==='助動詞'||(tj.pos==='動詞'&&(tj.pos_detail_1==='接尾'||tj.pos_detail_1==='非自立'))||(tj.pos==='助詞'&&tj.pos_detail_1==='接続助詞');
       const skip=j>i&&INFL.has(t.pos)&&allAux;
       if(j>i&&(tj.pos==='助詞'||tj.pos==='助動詞'))glue=true;
-      if(!skip)for(const c of cands){if(c.length>18)continue;const ids=dictFind(c);if(ids&&(j===i||(!ids.weak&&mergeOk(ids,c,glue||toks[i].pos==='助詞')))){best={j,key:c,ids};break;}}
+      if(!skip)for(const c of cands){if(c.length>18)continue;const ids=dictFind(c);if(ids&&(j===i||(!ids.weak&&mergeOk(ids,c,glue||toks[i].pos==='助詞')))){best={j,key:c,ids};break;}
+        if(j===i&&c===b&&c!==a){const pv=plainVerb(tj,b);if(pv){pv.j=i;best=pv;break;}}}
       surf=a;if(surf.length>18)break;}
-    if(!best){best=plainVerb(t,lemma(t));if(best)best.j=i;}
+    let s0=base+P[i],resc=false;
+    if(i+1<n&&t.pos!=='動詞'&&t.surface_form.length===1&&KANJI.test(t.surface_form)&&(!best||best.j===i)&&/^[ぁ-ん]/.test(toks[i+1].surface_form)){
+      const nx=seg.slice(P[i+1],P[i+1]+2),rv=rescueVerb(t.surface_form,nx[0],/[ぁ-ん]/.test(nx[1]||'')?nx[1]:'');if(rv){best={j:i+1,key:rv.key,ids:rv.ids};resc=true;}}
+    if(!best){const sf=t.surface_form;best=plainVerb(t,lemma(t))||stemVerb(lemma(t))||(/^.[ぁ-ん]+$/.test(sf)&&KANJI.test(sf[0])?rescueVerb(sf[0],sf[1],sf[2]||''):null)||(sf==='したら'?{key:'する',ids:dictFind('する')}:null);if(best){best.j=i;resc=true;}}
+    // a compound the dictionary does not list (遊び方, 取り続ける): look it up as its two halves
+    if(!best&&KANJI.test(t.surface_form)){const sf=t.surface_form,lm=lemma(t);
+      for(let k=sf.length-1;k>=1;k--){const pre=sf.slice(0,k);if(!lm.startsWith(pre))continue;const pi=dictFind(pre),A=stemVerb(pre)||(pi?{key:pre,ids:pi}:null);if(!A)continue;
+        const rl=lm.slice(k),ri=dictFind(rl),B=ri?{key:rl,ids:ri}:plainVerb(t,rl);if(!B)continue;
+        out.push({s:s0,e:s0+k,key:A.key,ids:A.ids});s0+=k;best={j:i,key:B.key,ids:B.ids};break;}}
+    if(best&&t.surface_form==='行っ'&&(best.key==='行く'||best.key==='行う')){const o=dictFind(best.key==='行く'?'行う':'行く');if(o){const m=best.ids.concat(o.filter(x=>!best.ids.includes(x)));best={j:best.j,key:best.key,ids:m};}}
     let j=best?best.j:i,last=toks[j];
-    if(INFL.has(last.pos))while(j+1<n){const x=toks[j+1];
+    if(resc||INFL.has(last.pos))while(j+1<n){const x=toks[j+1];
       if(x.pos==='助動詞'||(x.pos==='動詞'&&x.pos_detail_1==='接尾')||(x.pos==='助詞'&&x.pos_detail_1==='接続助詞'&&/^(て|で|ば|ちゃ|じゃ)$/.test(x.surface_form))||(x.pos==='動詞'&&/^(ちゃう|じゃう|てる|でる|とく|どく)$/.test(lemma(x)))||(x.pos==='助詞'&&/^(たり|だり)$/.test(x.surface_form)))j++;else break;}
-    const w={s:base+P[i],e:base+P[j]+toks[j].surface_form.length,key:best?best.key:lemma(t),ids:best?best.ids:null};
+    const w={s:s0,e:base+P[j]+toks[j].surface_form.length,key:best?best.key:lemma(t),ids:best?best.ids:null};
     if(best&&best.j>i){w.parts=[];for(let q=i;q<=best.j;q++)w.parts.push([base+P[q],base+P[q]+toks[q].surface_form.length,lemma(toks[q]),toks[q].surface_form]);}
     out.push(w);i=j+1;}
   // kanji-bearing tokens with their readings, for furigana
-  const tk=out.toks||(out.toks=[]);for(let q=0;q<n;q++){const t=toks[q];if(t.reading&&KANJI.test(t.surface_form))tk.push([base+P[q],base+P[q]+t.surface_form.length,lemma(t),hira(t.reading)]);}
+  const tk=out.toks||(out.toks=[]);for(let q=0;q<n;q++){const t=toks[q];if(t.reading&&KANJI.test(t.surface_form))tk.push([base+P[q],base+P[q]+t.surface_form.length,lemma(t),t.surface_form==='行っ'&&!t.okonau?'いっ':hira(t.reading)]);}
 }
 async function indexChapter(){
   dictStart();await Dict.ready;if(Dict.state!=='ready'||readerEl.hidden)return;if(R.words){applyFurigana();return;}
@@ -1188,6 +1219,7 @@ function lookupAt(g){
   const kids=[],surface=R.text.slice(res.s,res.e);
   if(res.ids){if(surface!==res.key)kids.push(h('div',{class:'d-from'},surface));for(const i of res.ids.slice(0,4))kids.push(entryNode(i,res.key,{s:res.s,e:res.e}));
     if(part&&part.key!==res.key){kids.push(h('div',{class:'d-part'},'この部分'));kids.push(entryNode(part.ids[0],part.key,{s:res.s,e:res.e}));}
+    const vo=verbOf(res.key);if(vo&&!res.ids.includes(vo.ids[0])&&!(part&&part.key===vo.key)){kids.push(h('div',{class:'d-part'},'動詞')); kids.push(entryNode(vo.ids[0],vo.key,{s:res.s,e:res.e}));}
     const kn=kanjiNode(res.key);if(kn)kids.push(kn);}
   else{kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));const kn=kanjiNode(surface);if(kn)kids.push(kn);}
   showDict(res.s,res.e,kids);dictEl.dataset.g=g;return true;
