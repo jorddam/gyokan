@@ -282,6 +282,9 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .quotes .acts{display:flex;gap:18px;font-size:.82rem;color:var(--mute)}
 .quotes .acts button{text-decoration:underline;text-underline-offset:3px}
 .quotes .acts span{margin-right:auto}
+#flow ruby.x-known rt{display:none}
+.d-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.d-acts .d-save{margin-left:0}
 .d-note{padding:12px 0;color:var(--mute)}
 @media (prefers-reduced-motion:reduce){.chrome{transition:none}}
 </style>
@@ -299,6 +302,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <div id="view"></div>
   <input type="file" id="file" accept=".epub,application/epub+zip" multiple hidden>
   <input type="file" id="backupFile" accept=".json,application/json" hidden>
+  <input type="file" id="knownFile" accept=".txt,.csv,.json,text/plain,application/json" hidden>
 </main>
 <section id="study" hidden aria-label="単語の復習"></section>
 <section id="sheet" hidden aria-label="AIの返事"></section>
@@ -327,6 +331,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
     <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
     <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
     <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
+    <div class="row"><span>ふりがな</span><div class="seg" id="segFuri"><button data-furi-v="auto">知らない語だけ</button><button data-furi-v="book">本のまま</button></div></div>
     <div class="row"><span>送り</span><div class="seg" id="segFlow"><button data-flow-v="page">ページ</button><button data-flow-v="scroll">スクロール</button></div></div>
     <div class="row"><span>手書き</span><div class="seg" id="segInk"><button data-ink-v="draw" aria-pressed="true">書く</button><button data-ink-v="erase">消す</button><button data-ink-undo="1">戻す</button></div></div>
     <div class="row" id="aiInkRow" hidden><span>このページの手書き</span><button class="ghost" id="aiInkBtn">AIノートを作る</button></div>
@@ -339,7 +344,7 @@ const $=(s,r=document)=>r.querySelector(s);
 const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in attrs||{}){const v=attrs[k];if(k==='class')e.className=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!=null&&v!==false)e.setAttribute(k,v);}for(const c of kids)if(c!=null)e.append(c);return e;};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // small line icons that say what each setting is for; matched to a row by the start of its label
-const ICONS={'文字の大きさ':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6','書体':'M5 7V5h14v2M12 5v14M9.5 19h5','組み方':'M18 4v16M12 4v16M6 4v9','送り':'M9 8l-4 4l4 4M15 8l4 4l-4 4',
+const ICONS={'ふりがな':'M4 18h16M6 12h12M9 7h1.5M13.5 7H15','知っている単語':'M5 12.5l4.5 4.5L19 7.5','文字の大きさ':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6','書体':'M5 7V5h14v2M12 5v14M9.5 19h5','組み方':'M18 4v16M12 4v16M6 4v9','送り':'M9 8l-4 4l4 4M15 8l4 4l-4 4',
   '手書き':'M4 20l1-4L16 5l3 3L8 19ZM14 7l3 3','このページの手書き':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z',
   '一日のページ数':'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18ZM12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8Z','バックアップ':'M12 4v10M8 10l4 4l4-4M5 18h14','自動同期':'M5 9a7 7 0 0 1 12-3l2 2M19 4v4h-4M19 15a7 7 0 0 1-12 3l-2-2M5 20v-4h4',
   'AI':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z','文字・':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6'};
@@ -348,8 +353,8 @@ function addIcons(root){for(const lab of root.querySelectorAll('.row > span:firs
 const PAGE_CHARS=600; // one "page" = 600 characters, independent of font size
 
 /* ---------- storage ---------- */
-const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new Map(),notes:new Map(),quotes:new Map()},
-  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',5);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab','ink','notes','quotes'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
+const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new Map(),notes:new Map(),quotes:new Map(),kv:new Map()},
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open('gyokan',6);r.onupgradeneeded=()=>{for(const n of ['books','content','vocab','ink','notes','quotes','kv'])if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});}catch(e){this.db=null;}
     try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{});}catch(e){}},
   run(store,mode,fn){if(!this.db)return Promise.resolve(fn(null));return new Promise((res,rej)=>{let out;try{const tx=this.db.transaction(store,mode);const rq=fn(tx.objectStore(store));if(rq)rq.onsuccess=()=>{out=rq.result;};tx.oncomplete=()=>res(out);tx.onerror=tx.onabort=()=>rej(tx.error);}catch(e){rej(e);}});},
   get(s,id){return this.run(s,'readonly',o=>o?o.get(id):null).then(v=>this.db?v:this.mem[s].get(id));},
@@ -357,13 +362,20 @@ const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new
   put(s,v){if(s!=='content')markDirty();if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
   del(s,id){if(s!=='content')markDirty();if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
 };
-const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
+const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto'},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
 if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
 const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='log'||k==='folders')markDirty();}};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // a book's position as one number: characters from the start of the book
 const bookG=b=>{let g=0;for(let i=0;i<b.pos.ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return g+(b.pos.off||0);};
 const sameBook=(a,b)=>a.title===b.title&&(a.author||'')===(b.author||'')&&a.total===b.total;
+/* known words: furigana is shown only for words that are not in this list */
+const Known=new Set();
+async function loadKnown(){const r=await DB.get('kv','known');Known.clear();for(const w of (r&&r.words)||[])Known.add(w);}
+const saveKnown=()=>DB.put('kv',{id:'known',words:[...Known]});
+const furiAuto=()=>S.furi!=='book'&&Known.size>0;
+function parseWordList(text){let arr;try{const j=JSON.parse(text);arr=Array.isArray(j)?j:(j&&Array.isArray(j.words)?j.words:null);}catch(e){}
+  if(!arr)arr=text.split(/[\r\n,、\t]+/);return arr.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);}
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
   d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
@@ -627,7 +639,7 @@ function startStudy(queue){
 
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
-  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),log:LS.get('log',{}),home:LS.get('homeFolder',''),
+  return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),home:LS.get('homeFolder',''),
     folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav})),vocab:await DB.all('vocab'),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
@@ -643,6 +655,7 @@ async function restoreBackup(data){
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
+  if(Array.isArray(data.known)){Known.clear();for(const w of data.known)Known.add(w);await saveKnown();}
   if(data.home!=null)LS.set('homeFolder',data.home);
   if(data.log){const log=LS.get('log',{});for(const k in data.log)log[k]=Math.max(log[k]||0,data.log[k]);LS.set('log',log);}
   if(data.folders)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
@@ -684,6 +697,9 @@ function syncRow(){const c=syncCfg(),st=LS.get('syncState',null),hm=t=>{const d=
   const save=h('button',{class:'ghost',onclick:async()=>{if(!repo.value.trim()||!tok.value.trim())return;LS.set('sync',{repo:repo.value.trim(),token:tok.value.trim()});save.textContent='確認中…';
     try{const got=await syncNow();toast(got?'同期しました：保存されていた記録を読み込みました':'同期を始めました');}catch(e){toast('同期できません：'+(e&&e.message||e),7000);}renderHome();}},'保存');
   return h('div',{class:'row'},h('span',null,'自動同期（GitHub）',h('small',null,note)),h('div',{class:'step'},repo,tok,save));}
+function knownRow(){let armed=false;const clr=h('button',{class:'ghost',onclick:async()=>{if(!armed){armed=true;clr.textContent='もう一度押すと空にします';return;}Known.clear();await saveKnown();renderHome();}},'空にする');
+  return h('div',{class:'row'},h('span',null,'知っている単語',h('small',null,'ここにない語にだけ、ふりがなを付けます。本の中で単語を押して追加・削除できます。1行に1語のファイルを読み込めます。'),h('small',null,`${Known.size.toLocaleString()}語`)),
+    h('div',{class:'step'},h('button',{class:'ghost',onclick:()=>$('#knownFile').click()},'読み込む'),Known.size?clr:null));}
 function keyRow(){const has=!!LS.get('key',''),inp=h('input',{type:'password',placeholder:'sk-ant-…','aria-label':'Claude APIキー',autocomplete:'off'});
   const save=h('button',{class:'ghost',onclick:()=>{const v=inp.value.trim();if(!v)return;LS.set('key',v);renderHome();toast('キーを保存しました');}},'保存');
   const test=h('button',{class:'ghost',onclick:async()=>{test.textContent='確認中…';try{toast('AI：'+await askClaude('「接続できました」とだけ返してください。',30),4000);}catch(e){toast('つながりません：'+(e&&e.message||e),8000);}test.textContent='接続を試す';}},'接続を試す');
@@ -694,11 +710,13 @@ function renderSettings(root){
   root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'設定'))),h('div',{class:'set'},
     S.simple?null:h('div',{class:'row'},h('span',null,'一日のページ数',h('small',null,'1ページは600字。読書中の本に順番に割り振ります。月と年の目標もこの数から決まります。')),h('div',{class:'step'},h('button',{'aria-label':'減らす',onclick:()=>bump(-1)},'−'),out,h('button',{'aria-label':'増やす',onclick:()=>bump(1)},'＋'))),
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
+    knownRow(),
     syncRow(),
     S.simple?null:keyRow(),
     h('div',{class:'row'},h('span',null,'文字・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
   addIcons(root);
 }
+$('#knownFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const before=Known.size;for(const w of parseWordList(await f.text()))Known.add(w);await saveKnown();toast(`${(Known.size-before).toLocaleString()}語を追加しました（合計 ${Known.size.toLocaleString()}語）`,4500);renderHome();}catch(err){toast('読み込めませんでした',4200);}};
 $('#backupFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const r=await restoreBackup(JSON.parse(await f.text()));toast(`読み込みました：本${r.books}冊、単語${r.vocab}語`+(r.pending?`（未追加の本${r.pending}冊は追加時に反映）`:''),5000);renderHome();}catch(err){toast(err.message||'読み込めませんでした',4200);}};
 for(const t of document.querySelectorAll('.tabs button'))t.onclick=()=>setView(t.dataset.view);
 $('#simpleT').onchange=e=>{S.simple=e.target.checked;saveSettings();toast(S.simple?'シンプル表示：読書と辞書、単語の保存だけにしました':'すべての機能を表示します');renderHome();};
@@ -796,7 +814,7 @@ function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)ret
   const ex=R.text.slice(off,off+260).trim();if(ex.length>40)b.excerpt=ex;DB.put('books',b).catch(()=>{});}
 async function loadChapter(ch,target){
   if(R.busy)return;R.busy=true;
-  try{R.ch=clamp(ch,0,R.book.chapters.length-1);R.ink=null;for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
+  try{R.ch=clamp(ch,0,R.book.chapters.length-1);R.ink=null;R.furiDone=false;for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
     flow.style.visibility='hidden';flow.innerHTML=R.content.chapters[R.ch]||'';
     await Promise.all([...flow.querySelectorAll('img')].map(im=>{const r=R.content.res[im.dataset.res];if(!r){im.remove();return null;}const u=URL.createObjectURL(new Blob([r.buf],{type:r.type}));R.urls.push(u);im.src=u;return Promise.race([im.decode().catch(()=>{}),new Promise(z=>setTimeout(z,3000))]);}));
     geometry();measure();const fragEl=target&&target.frag?flow.querySelector(`[data-id="${CSS.escape(target.frag)}"]`):null,fragC=fragEl?coords(flow.getBoundingClientRect(),fragEl.getBoundingClientRect())[0]:null;
@@ -822,7 +840,7 @@ async function openBook(id){
   $('#rtitle').textContent=book.title;
   const list=$('#tocList');list.textContent='';
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
-  for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);setFlowButtons();
+  for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);setFlowButtons();setFuriButtons();
   const tt=$('.toast');if(tt)tt.hidden=true;$('#home').hidden=true;readerEl.hidden=false;setUi(false);closePanels();
   sizeInk();await loadChapter(book.pos.ch,{off:book.pos.off});offerAI();
 }
@@ -839,6 +857,7 @@ function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();if(syncDirty)
   if(sum)showSheet('今回の要約',`『${sum.title}』`,askClaude('次の文章は、読者がたった今読み終えた日本語の本の一節です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+sum.text));
 }
 function setUi(on){readerEl.classList.toggle('ui',on);}
+const setFuriButtons=()=>{for(const x of document.querySelectorAll('[data-furi-v]'))x.setAttribute('aria-pressed',(x.dataset.furiV==='book')===(S.furi==='book'));};
 const setFlowButtons=()=>{for(const x of document.querySelectorAll('[data-flow-v]'))x.setAttribute('aria-pressed',(x.dataset.flowV==='scroll')===!!S.scroll);};
 function closePanels(){closeSel();$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;closeDict();}
 const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden;
@@ -902,6 +921,7 @@ $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   else if(b.dataset.themeV){S.theme=b.dataset.themeV;saveSettings();applySettings();}
   else if(b.dataset.fontV){S.font=b.dataset.fontV;saveSettings();applySettings();relayout();}
   else if(b.dataset.dirV){const off=currentOff();R.book.vertical=b.dataset.dirV==='v';for(const x of document.querySelectorAll('[data-dir-v]'))x.setAttribute('aria-pressed',x===b);geometry();measure();goOff(off);}
+  else if(b.dataset.furiV){S.furi=b.dataset.furiV;saveSettings();setFuriButtons();if(S.furi!=='book'&&!Known.size)toast('知っている単語がまだありません。設定から読み込めます',4200);loadChapter(R.ch,{off:currentOff()});}
   else if(b.dataset.flowV){const off=currentOff();S.scroll=b.dataset.flowV==='scroll';saveSettings();setFlowButtons();geometry();measure();goOff(off);}});
 $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
@@ -1017,6 +1037,26 @@ function dictEntry(i){const L=Dict.lines,f=dec.decode(Dict.bytes.subarray(L[i+1]
   return {k:f[0]?f[0].split(';'):[],r:f[1].split(';'),common:f[2]==='1',senses:f[3].split('\x1f').map(x=>{const p=x.split('|');return {pos:p[0],misc:p[1],gloss:p.slice(2).join('|')};})};}
 const NOWORD=/^[\s　-〿＀-／：-＠［-｀｛-･‐-※─-╿!-\/:-@\[-`{-~0-9０-９]+$/;
 const INFL=new Set(['動詞','形容詞','助動詞']);
+const KANJI=/[一-鿿㐀-䶿々〆]/,hira=x=>x.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+// which part of a reading belongs to which kanji: 食べ + たべ gives 食=た; falls back to one reading over the whole word
+function furiParts(surf,read){const segs=[];let i=0;while(i<surf.length){const k=KANJI.test(surf[i]);let j=i;while(j<surf.length&&KANJI.test(surf[j])===k)j++;segs.push([i,j,k]);i=j;}
+  let re='^';for(const [a,b,k] of segs)re+=k?'(.+?)':hira(surf.slice(a,b)).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  let m=null;try{m=read.match(new RegExp(re+'$'));}catch(e){}
+  if(!m)return [[0,surf.length,read]];let gi=1;return segs.filter(x=>x[2]).map(x=>[x[0],x[1],m[gi++]]);}
+// add furigana to unknown words and hide the book's own furigana on known ones, then lay the page out again in the same place
+function applyFurigana(){
+  if(R.furiDone||!R.words||!R.book||readerEl.hidden)return;R.furiDone=true;if(!furiAuto())return;
+  const toks=R.words.toks||[],W=R.words,off=currentOff();let changed=false;
+  const wordAt=g=>{let lo=0,hi=W.length-1;while(lo<=hi){const mid=(lo+hi)>>1,w=W[mid];if(g<w.s)hi=mid-1;else if(g>=w.e)lo=mid+1;else return w;}return null;};
+  for(let q=toks.length-1;q>=0;q--){const [s,e,lem,read]=toks[q],nd=R.nodes[nodeAt(s)];if(!nd)continue;
+    const w=wordAt(s),surf=R.text.slice(s,e),known=Known.has(lem)||Known.has(surf)||!!(w&&Known.has(w.key)),rb=nd.n.parentElement.closest('ruby');
+    if(rb){if(known&&!rb.classList.contains('x-furi')&&!rb.classList.contains('x-known')){rb.classList.add('x-known');changed=true;}continue;}
+    if(known||e>nd.off+nd.len||nd.n.parentElement.closest('rt'))continue;
+    const parts=furiParts(surf,read);
+    for(let p=parts.length-1;p>=0;p--){const [a,b,r]=parts[p];if(!r||r===hira(surf.slice(a,b)))continue;
+      const mid=nd.n.splitText(s-nd.off+a);mid.splitText(b-a);const ruby=document.createElement('ruby');ruby.className='x-furi';mid.replaceWith(ruby);const rt=document.createElement('rt');rt.textContent=r;ruby.append(mid,rt);changed=true;}}
+  if(changed){measure();goOff(off);}
+}
 // may several tokens be joined into this entry? Compound nouns join freely; anything glued with particles must be
 // a common word or a set expression; rare/archaic entries and kanji spellings of usually-kana words never join.
 const RAREM=/archaic|obscure|obsolete|rare|dated/;
@@ -1050,14 +1090,16 @@ function groupTokens(toks,seg,base,out){
     const w={s:base+P[i],e:base+P[j]+toks[j].surface_form.length,key:best?best.key:lemma(t),ids:best?best.ids:null};
     if(best&&best.j>i){w.parts=[];for(let q=i;q<=best.j;q++)w.parts.push([base+P[q],base+P[q]+toks[q].surface_form.length,lemma(toks[q]),toks[q].surface_form]);}
     out.push(w);i=j+1;}
+  // kanji-bearing tokens with their readings, for furigana
+  const tk=out.toks||(out.toks=[]);for(let q=0;q<n;q++){const t=toks[q];if(t.reading&&KANJI.test(t.surface_form))tk.push([base+P[q],base+P[q]+t.surface_form.length,lemma(t),hira(t.reading)]);}
 }
 async function indexChapter(){
-  dictStart();await Dict.ready;if(Dict.state!=='ready'||readerEl.hidden||R.words)return;
+  dictStart();await Dict.ready;if(Dict.state!=='ready'||readerEl.hidden)return;if(R.words){applyFurigana();return;}
   const text=R.text,bounds=[...R.breaks,text.length],words=[];let st=0,t0=performance.now();
   for(const end of bounds){if(end<=st)continue;const seg=text.slice(st,end);
     if(seg.trim())groupTokens(Dict.tok.tokenize(seg),seg,st,words);st=end;
     if(performance.now()-t0>24){await new Promise(r=>setTimeout(r));if(readerEl.hidden||R.text!==text)return;t0=performance.now();}}
-  if(R.text===text)R.words=words;
+  if(R.text===text){R.words=words;applyFurigana();}
 }
 function charRect(g){const i=nodeAt(g),nd=R.nodes[i];if(!nd)return null;const m=g-nd.off;if(m<0||m>=nd.len)return null;rg.setStart(nd.n,m);rg.setEnd(nd.n,m+1);const r=rg.getBoundingClientRect();return r.width<1||r.height<1?null:r;}
 // which character is under the finger: find the line, then search along it (taps on furigana land on the word beside them)
@@ -1111,7 +1153,11 @@ function entryNode(i,key,ctx){const en=dictEntry(i);let word,read;
       const sn=sentenceAround(ctx.s,ctx.e),kana=en.k.includes(key)||!en.k.length?en.r[0]:en.r.includes(key)?'':en.r[0];
       await DB.put('vocab',{id,entry:i,key,word,read:word===kana?'':kana,gloss:en.senses.slice(0,3).map(x=>x.gloss).join(' / '),sent:sn.text,ws:sn.ws,we:sn.we,bookId:R.book.id,book:R.book.title,ch:R.ch,off:ctx.s,added:Date.now(),due:Date.now(),ivl:0,reps:0});
       save.setAttribute('aria-pressed','true');save.textContent='追加済み';};}
-  return h('div',{class:'d-entry'},h('div',{class:'d-head'},h('span',{class:'d-word'},word),read?h('span',{class:'d-read'},read):null,en.common?h('span',{class:'d-tag'},'常用'):null,save),ol);}
+  let acts=null;
+  if(ctx){const kn=h('button',{class:'d-save','aria-pressed':String(Known.has(word))},Known.has(word)?'知っている語（外す）':'知っている語にする');
+    kn.onclick=async()=>{if(Known.has(word))Known.delete(word);else Known.add(word);await saveKnown();const off=currentOff();closeDict();toast(Known.has(word)?`「${word}」を知っている語にしました`:`「${word}」を知っている語から外しました`);loadChapter(R.ch,{off});};
+    acts=h('div',{class:'d-acts'},save,kn);}
+  return h('div',{class:'d-entry'},h('div',{class:'d-head'},h('span',{class:'d-word'},word),read?h('span',{class:'d-read'},read):null,en.common?h('span',{class:'d-tag'},'常用'):null),acts,ol);}
 // the sentence around a word, for the vocab card
 function sentenceAround(s,e){const t=R.text,br=new Set(R.breaks),stop=/[。！？!?]/;let a=s,b=e;
   while(a>0&&s-a<80&&!br.has(a)&&!stop.test(t[a-1]))a--;
@@ -1152,7 +1198,7 @@ function showDict(s,e,kids){
 }
 
 /* ---------- start ---------- */
-(async()=>{applySettings();addIcons($('#aa'));await DB.open();
+(async()=>{applySettings();addIcons($('#aa'));await DB.open();await loadKnown();
   LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
   await renderHome();
   if(syncCfg())syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});
