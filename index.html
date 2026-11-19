@@ -303,10 +303,27 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #flow .rd[aria-pressed=true]{border-color:transparent;color:var(--accent);padding-inline:.2em}
 #flow .rd[aria-pressed=true]::before{content:'✓ 読んだ'}
 #flow .rd-done{color:#66655f;color:color-mix(in srgb,var(--text) 46%,transparent);transition:color .45s ease}
-.stats{max-width:620px;width:100%;margin:0 auto;flex:1;overflow:auto}
-.stats dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:22px 18px;margin:8px 0 34px}
+.heat{margin:0 0 38px}
+.heat .yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.heat .yr h3{margin:0}
+.heat .yr button{width:34px;height:30px;color:var(--mute);font-size:1.1rem}
+.heat .yr button[disabled]{opacity:.25}
+.heat .months,.heat .grid{display:grid;grid-template-columns:repeat(54,1fr);gap:2px}
+.heat .months{font-size:.66rem;color:var(--mute);margin-bottom:4px;white-space:nowrap}
+.heat .months span{grid-row:1}
+.heat .grid{grid-template-rows:repeat(7,auto);grid-auto-flow:column}
+.heat .grid i{aspect-ratio:1;border-radius:2px;background:#000;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.heat .grid i.pad{visibility:hidden}
+.heat .grid i.future{background:transparent;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+.heat .grid i.on{outline:1.5px solid var(--ink);outline-offset:1px}
+.heat .legend{display:flex;align-items:center;gap:3px;justify-content:flex-end;margin-top:10px;font-size:.68rem;color:var(--mute)}
+.heat .legend i{width:11px;height:11px;border-radius:2px;background:#000;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.heat .legend span{margin:0 4px}
+.heat .info{font-size:.8rem;color:var(--mute);margin:8px 0 0;min-height:1.4em}
+.stats{max-width:760px;width:100%;margin:0 auto;flex:1;overflow:auto}
+.stats dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:22px 18px;margin:8px 0 34px}
 .stats dt{font-size:.78rem;color:var(--mute)}
-.stats dd{margin:4px 0 0;font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums}
+.stats dd{margin:4px 0 0;font-size:1.3rem;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .stats dd small{display:block;font-size:.74rem;font-weight:400;color:var(--mute);margin-top:2px}
 .stats h3{font-size:.82rem;font-weight:500;color:var(--mute);margin:0 0 12px}
 .stats .bars{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--line)}
@@ -550,8 +567,7 @@ const itemState=(it,b)=>{const g=bookG(b),done=!!it.done||g>=it.target-1;return 
 // page goals: today, this month, this year. All three come from the one daily number in settings.
 function goalsNode(){
   // counted from the 読んだ marks; days before the marks existed keep their old page-turn count
-  const old=LS.get('log',{}),rl=LS.get('readlog',{}),log={};for(const k in old)if(k<READ_SINCE)log[k]=old[k];for(const k in rl)if(k>=READ_SINCE)log[k]=rl[k];
-  const d=new Date(),y=d.getFullYear(),t=todayStr(),ym=t.slice(0,7),yy=t.slice(0,4);let day=0,mon=0,yr=0;
+  const log=readByDay(),d=new Date(),y=d.getFullYear(),t=todayStr(),ym=t.slice(0,7),yy=t.slice(0,4);let day=0,mon=0,yr=0;
   for(const k in log){const p=log[k]/PAGE_CHARS;if(k===t)day+=p;if(k.startsWith(ym))mon+=p;if(k.startsWith(yy))yr+=p;}
   const dim=new Date(y,d.getMonth()+1,0).getDate(),diy=Math.round((new Date(y+1,0,1)-new Date(y,0,1))/DAY),box=h('div',{class:'goals'});
   for(const [label,val,goal] of [['今日',day,S.pages],['今月',mon,S.pages*dim],['今年',yr,S.pages*diy]])
@@ -878,6 +894,21 @@ function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const off=current
 // "read" marks: after at least READ_MIN characters, the next paragraph end gets a small button. Pressing it adds that
 // stretch to the day's total (kept apart from the page goals, which follow page turns).
 const READ_MIN=300,READ_SINCE='2026-11-19';
+function readByDay(){const old=LS.get('log',{}),rl=LS.get('readlog',{}),log={};for(const k in old)if(k<READ_SINCE&&old[k])log[k]=old[k];for(const k in rl)if(k>=READ_SINCE&&rl[k])log[k]=rl[k];return log;}
+// heat map colour: nothing read is black, one page a dark green, fifty pages or more a very pale green
+function heatColor(chars){if(!chars)return '';const p=Math.max(1,chars/PAGE_CHARS),t=Math.min(1,Math.log(p)/Math.log(50)),a=[14,68,41],b=[214,248,221];return `rgb(${a.map((x,i)=>Math.round(x+(b[i]-x)*t)).join(',')})`;}
+function heatNode(log){const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,now=new Date(),years=Object.keys(log).map(k=>+k.slice(0,4)),minY=Math.min(now.getFullYear(),...years);
+  const wrap=h('div',{class:'heat'}),info=h('p',{class:'info'},'\u00a0');let year=now.getFullYear();
+  const draw=()=>{wrap.textContent='';const grid=h('div',{class:'grid'}),months=h('div',{class:'months'}),first=new Date(year,0,1),lead=first.getDay();let tot=0,n=0;
+    for(let i=0;i<lead;i++)grid.append(h('i',{class:'pad'}));
+    for(const d=new Date(first);d.getFullYear()===year;d.setDate(d.getDate()+1)){const k=ymd(d),c=log[k]||0,cell=h('i',c?{style:`background:${heatColor(c)}`}:null),future=d>now;if(future)cell.className='future';if(c){tot+=c;n++;}
+      const label=`${d.getMonth()+1}月${d.getDate()}日　${c?`${(c/PAGE_CHARS).toFixed(1)}ページ（${Math.round(c).toLocaleString()}字）`:future?'':'0ページ'}`;cell.onclick=()=>{info.textContent=label;for(const x of grid.querySelectorAll('.on'))x.classList.remove('on');cell.classList.add('on');};grid.append(cell);
+      if(d.getDate()===1)months.append(h('span',{style:`grid-column:${Math.floor((lead+Math.round((d-first)/864e5))/7)+1}`},`${d.getMonth()+1}月`));}
+    info.textContent=n?`${year}年　読んだ日 ${n}日・${Math.round(tot/PAGE_CHARS).toLocaleString()}ページ`:`${year}年　まだ記録がありません`;
+    const prev=h('button',{'aria-label':'前の年',onclick:()=>{year--;draw();}},'‹'),next=h('button',{'aria-label':'次の年',onclick:()=>{year++;draw();}},'›');prev.disabled=year<=minY;next.disabled=year>=now.getFullYear();
+    wrap.append(h('div',{class:'yr'},h('h3',null,`${year}年`),h('span',null,prev,next)),months,grid,
+      h('div',{class:'legend'},h('span',null,'0'),h('i',null),h('span',null,'1'),...[1,3,7,15,30,50].map(p=>h('i',{style:`background:${heatColor(p*PAGE_CHARS)}`})),h('span',null,'50ページ〜')),info);};
+  draw();return wrap;}
 const mergeRead=(a,b)=>{const o=JSON.parse(JSON.stringify(a||{}));for(const ch in b||{}){o[ch]=o[ch]||{};for(const e in b[ch])if(!o[ch][e])o[ch][e]=b[ch][e];}return o;};
 function placeReadMarks(){
   if(S.simple||!R.book)return;const w=document.createTreeWalker(flow,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT});
@@ -899,7 +930,7 @@ function toggleRead(m){const b=R.book,e=+m.dataset.e,n=e-(+m.dataset.s),log=LS.g
   else{const d=todayStr();c[e]=[d,n];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
   LS.set('readlog',log);DB.put('books',b).catch(()=>{});closeDict();}
 // the quiet record of what has been marked as read
-function showStats(){const log=LS.get('readlog',{}),t=todayStr(),day=k=>{const d=new Date();d.setDate(d.getDate()-k);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+function showStats(){const log=readByDay(),t=todayStr(),day=k=>{const d=new Date();d.setDate(d.getDate()-k);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   let total=0,mon=0,yr=0,week=0,days=0;for(const k in log){total+=log[k];days++;if(k.startsWith(t.slice(0,7)))mon+=log[k];if(k.startsWith(t.slice(0,4)))yr+=log[k];}
   for(let k=0;k<7;k++)week+=log[day(k)]||0;let streak=0;for(let k=log[t]?0:1;log[day(k)];k++)streak++;
   const last=[];for(let k=29;k>=0;k--)last.push(log[day(k)]||0);const mx=Math.max(...last,1),f=n=>Math.round(n).toLocaleString(),pg=n=>`約${(n/PAGE_CHARS).toFixed(n<PAGE_CHARS*10?1:0)}ページ`;
@@ -907,6 +938,7 @@ function showStats(){const log=LS.get('readlog',{}),t=todayStr(),day=k=>{const d
   const box=h('div',{class:'picker',role:'dialog','aria-label':'読書の記録'},h('div',{class:'top'},h('h2',null,'読書の記録'),h('button',{onclick:()=>box.remove()},'閉じる')),
     h('div',{class:'stats'},total?null:h('p',{class:'none'},'まだ記録がありません。本文の段落の終わりに出る「読んだ」を押すと、その分がここに積み上がります。'),
       h('dl',null,...cell('今日',f(log[t]||0)+'字',pg(log[t]||0)),...cell('この7日間',f(week)+'字',pg(week)),...cell('今月',f(mon)+'字',pg(mon)),...cell('今年',f(yr)+'字',pg(yr)),...cell('これまで',f(total)+'字',pg(total)),...cell('続けて読んだ日',streak+'日',days?`読んだ日 ${days}日・平均 ${f(total/days)}字`:'')),
+      heatNode(log),
       h('h3',null,'この30日間'),h('div',{class:'bars'},...last.map((n,i)=>h('i',n?{style:`height:${Math.max(3,n/mx*100)}%`,title:`${day(29-i)}　${f(n)}字`}:{'data-z':'',title:day(29-i)}))),
       h('div',{class:'axis'},h('span',null,day(29).slice(5).replace('-','/')),h('span',null,'今日'))));
   document.body.append(box);}
