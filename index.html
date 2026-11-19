@@ -1068,6 +1068,10 @@ function mergeOk(ids,key,glue){
     return true;}
   return false;
 }
+// 流せる → 流す: the tokenizer treats "can do" verbs as words of their own, the dictionary only lists the plain verb
+const POT={'える':'う','ける':'く','げる':'ぐ','せる':'す','てる':'つ','ねる':'ぬ','べる':'ぶ','める':'む','れる':'る'};
+function plainVerb(t,lem){if(t.pos!=='動詞'||lem.length<3)return null;const m=POT[lem.slice(-2)];if(!m)return null;
+  const key=lem.slice(0,-2)+m,ids=dictFind(key);return ids&&ids.some(i=>dictEntry(i).senses.some(x=>/verb/i.test(x.pos)))?{j:-1,key,ids}:null;}
 // group tokens into dictionary words: longest JMdict match from each token, then attach trailing auxiliaries
 function groupTokens(toks,seg,base,out){
   const n=toks.length,P=[];let cur=0;
@@ -1084,9 +1088,10 @@ function groupTokens(toks,seg,base,out){
       if(j>i&&(tj.pos==='助詞'||tj.pos==='助動詞'))glue=true;
       if(!skip)for(const c of cands){if(c.length>18)continue;const ids=dictFind(c);if(ids&&(j===i||(!ids.weak&&mergeOk(ids,c,glue||toks[i].pos==='助詞')))){best={j,key:c,ids};break;}}
       surf=a;if(surf.length>18)break;}
+    if(!best){best=plainVerb(t,lemma(t));if(best)best.j=i;}
     let j=best?best.j:i,last=toks[j];
     if(INFL.has(last.pos))while(j+1<n){const x=toks[j+1];
-      if(x.pos==='助動詞'||(x.pos==='動詞'&&x.pos_detail_1==='接尾')||(x.pos==='助詞'&&x.pos_detail_1==='接続助詞'&&/^(て|で|ば|ちゃ|じゃ)$/.test(x.surface_form)))j++;else break;}
+      if(x.pos==='助動詞'||(x.pos==='動詞'&&x.pos_detail_1==='接尾')||(x.pos==='助詞'&&x.pos_detail_1==='接続助詞'&&/^(て|で|ば|ちゃ|じゃ)$/.test(x.surface_form))||(x.pos==='動詞'&&/^(ちゃう|じゃう|てる|でる|とく|どく)$/.test(lemma(x)))||(x.pos==='助詞'&&/^(たり|だり)$/.test(x.surface_form)))j++;else break;}
     const w={s:base+P[i],e:base+P[j]+toks[j].surface_form.length,key:best?best.key:lemma(t),ids:best?best.ids:null};
     if(best&&best.j>i){w.parts=[];for(let q=i;q<=best.j;q++)w.parts.push([base+P[q],base+P[q]+toks[q].surface_form.length,lemma(toks[q]),toks[q].surface_form]);}
     out.push(w);i=j+1;}
