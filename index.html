@@ -113,6 +113,9 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .pop{position:absolute;top:calc(var(--sat) + 62px);right:calc(var(--sar) + 14px);width:min(320px,92vw);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -20px rgba(0,0,0,.5);padding:8px 16px;z-index:20}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-size:.9rem}
 .row:last-child{border-bottom:0}
+.ic{display:inline-flex;width:18px;height:18px;margin-right:10px;vertical-align:-3px;color:var(--mute);flex:none}
+.ic svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.row:has(+ .row[hidden]){border-bottom:0}
 .seg{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:2px}
 .seg button{padding:6px 12px;border-radius:7px;font-size:.86rem;min-width:44px}
 .seg button[aria-pressed=true]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.18);font-weight:600}
@@ -335,6 +338,13 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 const $=(s,r=document)=>r.querySelector(s);
 const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in attrs||{}){const v=attrs[k];if(k==='class')e.className=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!=null&&v!==false)e.setAttribute(k,v);}for(const c of kids)if(c!=null)e.append(c);return e;};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+// small line icons that say what each setting is for; matched to a row by the start of its label
+const ICONS={'文字の大きさ':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6','書体':'M5 7V5h14v2M12 5v14M9.5 19h5','組み方':'M18 4v16M12 4v16M6 4v9','送り':'M9 8l-4 4l4 4M15 8l4 4l-4 4',
+  '手書き':'M4 20l1-4L16 5l3 3L8 19ZM14 7l3 3','このページの手書き':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z',
+  '一日のページ数':'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18ZM12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8Z','バックアップ':'M12 4v10M8 10l4 4l4-4M5 18h14','自動同期':'M5 9a7 7 0 0 1 12-3l2 2M19 4v4h-4M19 15a7 7 0 0 1-12 3l-2-2M5 20v-4h4',
+  'AI':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z','文字・':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6'};
+function addIcons(root){for(const lab of root.querySelectorAll('.row > span:first-child')){if(lab.querySelector('.ic'))continue;const t=lab.textContent,k=Object.keys(ICONS).sort((a,b)=>b.length-a.length).find(x=>t.startsWith(x));if(!k)continue;
+  const sp=document.createElement('span');sp.className='ic';sp.setAttribute('aria-hidden','true');sp.innerHTML=`<svg viewBox="0 0 24 24"><path d="${ICONS[k]}"/></svg>`;lab.prepend(sp);}}
 const PAGE_CHARS=600; // one "page" = 600 characters, independent of font size
 
 /* ---------- storage ---------- */
@@ -687,6 +697,7 @@ function renderSettings(root){
     syncRow(),
     S.simple?null:keyRow(),
     h('div',{class:'row'},h('span',null,'文字・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
+  addIcons(root);
 }
 $('#backupFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const r=await restoreBackup(JSON.parse(await f.text()));toast(`読み込みました：本${r.books}冊、単語${r.vocab}語`+(r.pending?`（未追加の本${r.pending}冊は追加時に反映）`:''),5000);renderHome();}catch(err){toast(err.message||'読み込めませんでした',4200);}};
 for(const t of document.querySelectorAll('.tabs button'))t.onclick=()=>setView(t.dataset.view);
@@ -1141,7 +1152,7 @@ function showDict(s,e,kids){
 }
 
 /* ---------- start ---------- */
-(async()=>{applySettings();await DB.open();
+(async()=>{applySettings();addIcons($('#aa'));await DB.open();
   LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
   await renderHome();
   if(syncCfg())syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});
