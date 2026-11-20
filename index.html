@@ -776,7 +776,7 @@ function renderSettings(root){
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
     knownRow(),
     syncRow(),
-    S.simple?null:h('div',{class:'row'},h('span',null,'読書の記録',h('small',null,'本文の「読んだ」を押した分の合計です。ページの目標もこの数で進みます。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:showStats},'見る'))),
+    h('div',{class:'row'},h('span',null,'読書の記録',h('small',null,S.simple?'本文の「読んだ」を押した分の合計です。':'本文の「読んだ」を押した分の合計です。ページの目標もこの数で進みます。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:showStats},'見る'))),
     S.simple?null:keyRow(),
     h('div',{class:'row'},h('span',null,'文字・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
   addIcons(root);
@@ -911,7 +911,7 @@ function heatNode(log){const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1)
   draw();return wrap;}
 const mergeRead=(a,b)=>{const o=JSON.parse(JSON.stringify(a||{}));for(const ch in b||{}){o[ch]=o[ch]||{};for(const e in b[ch])if(!o[ch][e])o[ch][e]=b[ch][e];}return o;};
 function placeReadMarks(){
-  if(S.simple||!R.book)return;const w=document.createTreeWalker(flow,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT});
+  if(!R.book)return;const w=document.createTreeWalker(flow,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT});
   const ends=[];let off=0,blk=null,lastNode=null,solid=0;
   for(let n;n=w.nextNode();){const bl=n.parentElement.closest(BLOCKS);if(bl!==blk){if(off&&lastNode)ends.push([off,blk,lastNode]);blk=bl;}
     if(n.nodeValue.trim()){lastNode=n;solid+=n.nodeValue.trim().length;}off+=n.nodeValue.length;}
