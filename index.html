@@ -377,6 +377,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <div id="selbar" hidden></div>
   <div id="aa" class="pop" hidden>
     <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
+    <div class="row"><span>上下の余白</span><div class="seg"><button data-mg="-1" aria-label="余白を狭く">狭く</button><button data-mg="1" aria-label="余白を広く">広く</button></div></div>
     <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
     <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
     <div class="row"><span>ふりがな</span><div class="seg" id="segFuri"><button data-furi-v="auto">知らない語だけ</button><button data-furi-v="book">本のまま</button></div></div>
@@ -392,7 +393,7 @@ const $=(s,r=document)=>r.querySelector(s);
 const h=(tag,attrs,...kids)=>{const e=document.createElement(tag);for(const k in attrs||{}){const v=attrs[k];if(k==='class')e.className=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!=null&&v!==false)e.setAttribute(k,v);}for(const c of kids)if(c!=null)e.append(c);return e;};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // small line icons that say what each setting is for; matched to a row by the start of its label
-const ICONS={'ふりがな':'M4 18h16M6 12h12M9 7h1.5M13.5 7H15','知っている単語':'M5 12.5l4.5 4.5L19 7.5','文字の大きさ':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6','書体':'M5 7V5h14v2M12 5v14M9.5 19h5','組み方':'M18 4v16M12 4v16M6 4v9','送り':'M9 8l-4 4l4 4M15 8l4 4l-4 4',
+const ICONS={'上下の余白':'M5 4h14M5 20h14M12 8v8M9.5 10.5L12 8l2.5 2.5M9.5 13.5L12 16l2.5-2.5','ふりがな':'M4 18h16M6 12h12M9 7h1.5M13.5 7H15','知っている単語':'M5 12.5l4.5 4.5L19 7.5','文字の大きさ':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6','書体':'M5 7V5h14v2M12 5v14M9.5 19h5','組み方':'M18 4v16M12 4v16M6 4v9','送り':'M9 8l-4 4l4 4M15 8l4 4l-4 4',
   '手書き':'M4 20l1-4L16 5l3 3L8 19ZM14 7l3 3','このページの手書き':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z',
   '一日のページ数':'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18ZM12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8Z','バックアップ':'M12 4v10M8 10l4 4l4-4M5 18h14','自動同期':'M5 9a7 7 0 0 1 12-3l2 2M19 4v4h-4M19 15a7 7 0 0 1-12 3l-2-2M5 20v-4h4',
   'AI':'M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7ZM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8Z','文字・':'M3 19L8.5 5L14 19M5 14h7M15 19l3-8l3 8M16.2 16h3.6'};
@@ -410,7 +411,7 @@ const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new
   put(s,v){if(s!=='content')markDirty();if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
   del(s,id){if(s!=='content')markDirty();if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
 };
-const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto'},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
+const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto',mg:0},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
 if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
 const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='log'||k==='folders'||k==='readlog')markDirty();}};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -803,8 +804,9 @@ function geometry(){
   const px=n=>parseFloat(cs.getPropertyValue(n))||0;
   const vw=innerWidth-px('--sal')-px('--sar'),vh=innerHeight-px('--sat')-px('--sab');
   const padX=clamp(vw*.06,26,76),padY=clamp(vh*.075,44,70);let W,H;
-  if(v){H=Math.min(vh-2*padY,fs*42);W=Math.max(L,Math.floor((vw-2*padX)/L)*L);}
-  else{W=Math.min(vw-2*padX,fs*36);H=Math.max(L,Math.floor((vh-2*padY)/L)*L);}
+  const mg=clamp(S.mg||0,0,12)*fs; // extra space above and below: each step takes two characters off a vertical line
+  if(v){H=Math.max(fs*12,Math.min(vh-2*padY,fs*42)-2*mg);W=Math.max(L,Math.floor((vw-2*padX)/L)*L);}
+  else{W=Math.min(vw-2*padX,fs*36);H=Math.max(L*4,Math.floor((vh-2*padY-2*mg)/L)*L);}
   R.L=L;R.B=v?W:H;
   const d=document.documentElement.style;d.setProperty('--fs',fs+'px');d.setProperty('--L',L+'px');d.setProperty('--inl',(v?H:W)+'px');d.setProperty('--blk',(v?W:H)+'px');
   viewport.style.width=W+'px';viewport.style.height=H+'px';flow.className=v?'v':'h';
@@ -890,7 +892,8 @@ async function loadChapter(ch,target){
     indexChapter();loadInk();
   }finally{R.busy=false;}
 }
-function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const off=currentOff();geometry();measure();goOff(off);}
+// several adjustments in a row keep the place they started from (each one alone would slip back to the start of its page)
+function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const k=R.keep,now=currentOff(),off=k&&k.ch===R.ch&&k.at===now?k.off:now;geometry();measure();goOff(off);R.keep={ch:R.ch,off,at:currentOff()};}
 // "read" marks: after at least READ_MIN characters, the next paragraph end gets a small button. Pressing it adds that
 // stretch to the day's total (kept apart from the page goals, which follow page turns).
 const READ_MIN=300,READ_SINCE='2026-11-19';
@@ -1034,6 +1037,7 @@ $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);}
   else if(b.dataset.inkUndo){if(R.ink&&R.ink.strokes.length){R.ink.strokes.pop();saveInk();drawInk();}}
   else if(b.id==='aiInkBtn'){readInk();}
+  else if(b.dataset.mg){const was=S.mg||0;S.mg=clamp(was+ +b.dataset.mg,0,12);if(S.mg!==was){saveSettings();relayout();}toast(S.mg?`上下の余白 +${S.mg}`:'上下の余白 標準',1200);}
   else if(b.dataset.size){S.size=clamp(S.size+ +b.dataset.size*2,14,34);saveSettings();relayout();}
   else if(b.dataset.themeV){S.theme=b.dataset.themeV;saveSettings();applySettings();}
   else if(b.dataset.fontV){S.font=b.dataset.fontV;saveSettings();applySettings();relayout();}
