@@ -992,7 +992,8 @@ let down=null,pen=null;const stage=$('#stage');
 const usesPen=e=>e.pointerType==='pen'||window.__penAll;
 stage.addEventListener('pointerdown',e=>{
   if(R.native){down=null;return;}
-  if(usesPen(e)&&R.ink&&!panelsOpen()&&!readerEl.classList.contains('ui')){pen={pts:[[e.clientX,e.clientY,e.pressure||.5]],moved:false,erased:false};try{stage.setPointerCapture(e.pointerId);}catch(x){}down=null;return;}
+  // the Pencil always writes (or erases): if the controls or a panel are still showing, it puts them away first
+  if(usesPen(e)&&R.ink){if(panelsOpen()||readerEl.classList.contains('ui')){closePanels();setUi(false);}pen={pts:[[e.clientX,e.clientY,e.pressure||.5]],moved:false,erased:false};try{stage.setPointerCapture(e.pointerId);}catch(x){}down=null;return;}
   down={x:e.clientX,y:e.clientY};});
 let lpT=null,lpAt=null,lpFired=false;
 const lpStop=()=>{clearTimeout(lpT);lpT=null;};
@@ -1050,7 +1051,7 @@ $('#tocBtn').onclick=()=>{const t=$('#toc'),was=t.hidden;closePanels();t.hidden=
 $('#notesBtn').onclick=()=>openNotes();
 $('#aaBtn').onclick=()=>{const a=$('#aa'),was=a.hidden;closePanels();a.hidden=!was;};
 $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);}
+  if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);closePanels();setUi(false);toast(R.erase?'消す：ペンでなぞった線が消えます':'書く：ペンで書き込めます',2200);}
   else if(b.dataset.inkUndo){if(R.ink&&R.ink.strokes.length){R.ink.strokes.pop();saveInk();drawInk();}}
   else if(b.id==='aiInkBtn'){readInk();}
   else if(b.dataset.mg){const was=S.mg||0;S.mg=clamp(was+ +b.dataset.mg,0,12);if(S.mg!==was){saveSettings();relayout();}toast(S.mg?`上下の余白 +${S.mg}`:'上下の余白 標準',1200);}
