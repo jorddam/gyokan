@@ -1013,9 +1013,19 @@ stage.addEventListener('pointerup',e=>{
   const rdm=readMarkAt(e.clientX,e.clientY);if(rdm){toggleRead(rdm);return;}
   const g=hitChar(e.clientX,e.clientY);if(g!=null&&lookupAt(g))return;
   if(dictOpen()){closeDict();return;}
-  // off the words: top and bottom margins bring up the controls, the sides turn the page
-  const vr=viewport.getBoundingClientRect(),f=e.clientX/innerWidth;
-  if(S.scroll||e.clientY<vr.top||e.clientY>vr.bottom)setUi(true);else if(f<.3)isV()?next():prev();else if(f>.7)isV()?prev():next();else setUi(true);});
+  // off the words: the left and right thirds turn the page all the way up and down the margins; the middle, and a strip along the very top and bottom, bring up the controls
+  const f=e.clientX/innerWidth,edge=Math.max(64,innerHeight*.08);
+  if(S.scroll||e.clientY<edge||e.clientY>innerHeight-edge)setUi(true);else if(f<.3)isV()?next():prev();else if(f>.7)isV()?prev():next();else setUi(true);});
+// scroll mode: a finger dragged in the margins moves the text too (the text area itself scrolls natively)
+{let mt=null,glide=0;const along=t=>isV()?t.clientX:t.clientY,push=d=>{if(isV())viewport.scrollLeft-=d;else viewport.scrollTop-=d;};
+  stage.addEventListener('touchstart',e=>{cancelAnimationFrame(glide);mt=null;if(!S.scroll||!R.book||R.native||e.touches.length!==1||viewport.contains(e.target)||panelsOpen()||readerEl.classList.contains('ui'))return;
+    const t=e.touches[0];if(t.touchType==='stylus')return;mt={id:t.identifier,p:along(t),t:e.timeStamp,v:0,moved:false,p0:along(t)};},{passive:true});
+  stage.addEventListener('touchmove',e=>{if(!mt)return;const t=[...e.touches].find(x=>x.identifier===mt.id);if(!t)return;const p=along(t),d=p-mt.p,dt=Math.max(1,e.timeStamp-mt.t);
+    if(!mt.moved&&Math.abs(p-mt.p0)<6)return;mt.moved=true;e.preventDefault();push(d);mt.v=.7*(d/dt)+.3*mt.v;mt.p=p;mt.t=e.timeStamp;},{passive:false});
+  const end=e=>{if(!mt)return;const m=mt;mt=null;if(!m.moved||e.timeStamp-m.t>90)return;let v=clamp(m.v,-4,4),last=performance.now();
+    const step=now=>{const dt=Math.min(40,now-last);last=now;push(v*dt);v*=Math.pow(.996,dt);if(Math.abs(v)>.03)glide=requestAnimationFrame(step);};glide=requestAnimationFrame(step);};
+  stage.addEventListener('touchend',end);stage.addEventListener('touchcancel',()=>{mt=null;});
+  stage.addEventListener('wheel',e=>{if(!S.scroll||!R.book||viewport.contains(e.target)||panelsOpen())return;const d=Math.abs(e.deltaY)>=Math.abs(e.deltaX)?e.deltaY:e.deltaX;if(isV())viewport.scrollLeft-=d;else viewport.scrollTop+=d;},{passive:true});}
 stage.addEventListener('pointercancel',()=>{down=null;if(pen){pen=null;drawInk();}});
 let scRaf=0,scT=null;
 viewport.addEventListener('scroll',()=>{if(!S.scroll||!R.book)return;
