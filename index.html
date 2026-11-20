@@ -1140,13 +1140,27 @@ function addStroke(pts){if(!R.ink)return;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(c
 /* ---------- AI: full view only, opted into for one sitting at a time ---------- */
 const AI_MODEL='claude-opus-5-5',NOTE_MODEL='claude-sonnet-5-5'; // summaries on Opus, handwriting notes on Sonnet
 const aiKey=()=>S.simple?'':LS.get('key','');
-async function askClaude(content,max=700,model=AI_MODEL){
-  const call=ver=>fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':LS.get('key',''),'anthropic-version':ver,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model,max_tokens:max,messages:[{role:'user',content}]})});
+async function claudePost(body){
+  const call=ver=>fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':LS.get('key',''),'anthropic-version':ver,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});
   let r=await call('2026-10-21'),j=await r.json().catch(()=>null);
   if(!r.ok&&j&&j.error&&/version/i.test(j.error.message||'')){r=await call('2023-06-01');j=await r.json().catch(()=>null);}
-  if(!r.ok)throw new Error((j&&j.error&&j.error.message)||('HTTP '+r.status));
-  return (j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('').trim();
+  if(!r.ok){const e=new Error((j&&j.error&&j.error.message)||('HTTP '+r.status));e.status=r.status;throw e;}
+  return j||{};
 }
+const claudeText=j=>(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('').trim();
+async function askClaude(content,max=700,model=AI_MODEL){return claudeText(await claudePost({model,max_tokens:max,messages:[{role:'user',content}]}));}
+// an answer with a fixed shape (quiz, 解説). Asked for as a structured reply, so quotation marks inside the Japanese cannot break it;
+// if that is refused, or the reply comes back as plain text, the text is read leniently instead.
+async function askClaudeData(prompt,schema,max,model=AI_MODEL){let j;
+  try{j=await claudePost({model,max_tokens:max,messages:[{role:'user',content:prompt}],tools:[{name:'answer',description:'Return the answer in this structure.',input_schema:schema}],tool_choice:{type:'tool',name:'answer'}});}
+  catch(e){if(e.status!==400)throw e;j=await claudePost({model,max_tokens:max,messages:[{role:'user',content:prompt}]});}
+  const tu=(j.content||[]).find(x=>x.type==='tool_use');if(tu&&tu.input&&Object.keys(tu.input).length)return {data:tu.input,cut:j.stop_reason==='max_tokens'};
+  return {text:claudeText(j),cut:j.stop_reason==='max_tokens'};}
+// every complete {...} found in a piece of text, even if the text around it is cut off or malformed
+function looseObjects(t,depthWanted){const out=[];let depth=0,start=-1,inStr=false,esc=false;
+  for(let i=0;i<t.length;i++){const c=t[i];if(inStr){if(esc)esc=false;else if(c==='\\')esc=true;else if(c==='"')inStr=false;continue;}
+    if(c==='"')inStr=true;else if(c==='{'){depth++;if(depth===depthWanted)start=i;}else if(c==='}'){if(depth===depthWanted&&start>=0){try{out.push(JSON.parse(t.slice(start,i+1)));}catch(e){}start=-1;}depth--;}}
+  return out;}
 function showSheet(title,from,promise){const el=$('#sheet'),body=h('div',{class:'body'},'書いています…');el.textContent='';
   el.append(h('div',{class:'box'},h('h3',null,title),h('div',{class:'from'},from),body,h('div',{class:'foot'},h('button',{class:'ghost',onclick:()=>{el.hidden=true;}},'閉じる'))));el.hidden=false;
   promise.then(t=>{if(t instanceof Node){body.textContent='';body.append(t);}else body.textContent=t||'（返事が空でした）';},e=>{body.textContent='AIに届きませんでした：'+(e&&e.message||e);});}
@@ -1196,22 +1210,24 @@ ${post}…
 
 ${body}`};}
 const QUIZ_FORMAT=QTYPE_ASK+'\n\n答えはJSONだけで返してください（前後に説明やコードブロックを付けない）。形式：{"questions":[{"type":"ref / why / view / para / match のどれか","q":"問題文","choices":["選択肢","選択肢","選択肢","選択肢"],"answer":正解の番号（0〜3）,"why":"短い解説","quote":"根拠の一文"}]}';
-function parseQuiz(t){const a=t.indexOf('{'),z=t.lastIndexOf('}');if(a<0||z<a)throw new Error('問題を読み取れませんでした');const j=JSON.parse(t.slice(a,z+1));
-  const qs=(j.questions||[]).filter(x=>x&&x.q&&Array.isArray(x.choices)&&x.choices.length>=2&&Number.isInteger(x.answer)&&x.answer>=0&&x.answer<x.choices.length);if(!qs.length)throw new Error('問題を読み取れませんでした');return qs;}
+const QUIZ_SCHEMA={type:'object',properties:{questions:{type:'array',items:{type:'object',properties:{type:{type:'string',enum:['ref','why','view','para','match']},q:{type:'string'},choices:{type:'array',items:{type:'string'}},answer:{type:'integer'},why:{type:'string'},quote:{type:'string'}},required:['type','q','choices','answer','why']}}},required:['questions']};
+function parseQuiz(r){let list;if(r.data)list=r.data.questions;else{const t=r.text||'';try{const a=t.indexOf('{'),z=t.lastIndexOf('}');list=JSON.parse(t.slice(a,z+1)).questions;}catch(e){list=looseObjects(t,2);}} // a reply cut short still yields the questions that were finished
+  const qs=(Array.isArray(list)?list:[]).filter(x=>x&&x.q&&Array.isArray(x.choices)&&x.choices.length>=2&&Number.isInteger(x.answer)&&x.answer>=0&&x.answer<x.choices.length);if(!qs.length)throw new Error('問題を読み取れませんでした');return qs;}
 function runQuiz(kind,ch,segs){if(!R.ai||!aiKey()||!R.book)return;const pr=quizPrompt(kind,ch,segs),title=kind==='chapter'?'章のクイズ':'読解クイズ';let ctitle='';for(let i=ch;i>=0&&!ctitle;i--)ctitle=R.book.chapters[i].title||'';
   const wrap=h('div',{class:'wrap'},h('p',{class:'wait'},'問題を作っています…')),box=h('div',{class:'picker quiz',role:'dialog','aria-label':title},h('div',{class:'top'},h('h2',null,title+(ctitle?`　${ctitle}`:'')),h('button',{onclick:()=>box.remove()},'閉じる')),wrap);
   document.body.append(box);
-  askClaude(pr.ask+QUIZ_FORMAT,kind==='chapter'?2600:1700).then(parseQuiz).then(qs=>{let i=0,right=0;
+  askClaudeData(pr.ask+QUIZ_FORMAT,QUIZ_SCHEMA,kind==='chapter'?8000:5000).then(parseQuiz).then(qs=>{let i=0,right=0;
     const show=()=>{wrap.textContent='';if(i>=qs.length){wrap.append(h('div',{class:'end'},h('b',null,`${qs.length}問中 ${right}問正解`),right===qs.length?'すべて正解です。':'本文に戻って、気になったところを読み直せます。'),h('div',{class:'foot'},h('button',{class:'add',onclick:()=>box.remove()},'本に戻る')));return;}
       const q=qs[i],chs=h('div',{class:'ch'}),after=h('div');let done=false;
       q.choices.forEach((c,k)=>chs.append(h('button',{onclick:e=>{if(done)return;done=true;const ok=k===q.answer;if(ok)right++;quizLog(q.type,ok);[...chs.children].forEach((x,m)=>{x.disabled=true;if(m===q.answer)x.classList.add('ok');else if(m===k)x.classList.add('no');});
         after.append(h('p',{class:'why'},(ok?'正解。':'不正解。')+(q.why||''),q.quote?h('q',null,q.quote):null),h('div',{class:'foot',style:'margin-top:22px'},h('button',{class:'add',onclick:()=>{i++;show();}},i===qs.length-1?'結果を見る':'次へ')));}},c)));
       wrap.append(h('p',{class:'n'},`${i+1} / ${qs.length}　${QTYPES[q.type]||QTYPES.match}`),h('p',{class:'q'},q.q),chs,after);wrap.scrollTop=0;};
-    show();}).catch(e=>{wrap.textContent='';wrap.append(h('p',{class:'wait'},'クイズを作れませんでした：'+(e&&e.message||e)));});}
+    show();}).catch(e=>{wrap.textContent='';wrap.append(h('p',{class:'wait'},'クイズを作れませんでした：'+(e&&e.message||e)),h('div',{class:'foot'},h('button',{class:'add',onclick:()=>{box.remove();runQuiz(kind,ch,segs);}},'もう一度作る')));});}
 // 解説: one sentence taken apart on request (long-press bar, AI sittings only)
 function explainSel(){const sl=R.sel;if(!sl||!R.ai||!aiKey())return;const t=R.text,sent=t.slice(sl.s,sl.e).trim(),pre=t.slice(Math.max(0,sl.s-200),sl.s).trim(),post=t.slice(sl.e,sl.e+120).trim(),title=R.book.title;closeSel();
   const ask=`A learner of Japanese (around JLPT N2, working toward N1) is reading the book 『${title}』 and wants one sentence explained.\n\nContext before (for understanding only):\n${pre||'(start of chapter)'}\n\nSENTENCE TO EXPLAIN:\n${sent}\n\nContext after (for understanding only):\n${post||'(end of chapter)'}\n\nReply with JSON only, no code fences, in this shape:\n{"paraphrase":"the sentence restated in simpler Japanese, keeping all of its meaning","structure":"1-3 short English sentences on how the sentence is built: the main clause, what each long modifier attaches to, any dropped subject and who it is","grammar":[{"form":"the grammar pattern as it appears, e.g. 〜ざるを得ない","level":"N5-N1","note":"short English note: what it means and what it is doing in this sentence"}],"tricky":"one short English note on anything easy to misread here (omit or leave empty if nothing)"}\nList only grammar worth pointing out at N3 level and above, most important first, at most 5. Explain only this sentence.`;
-  const p=askClaude(ask,900,NOTE_MODEL).then(x=>{const a=x.indexOf('{'),z=x.lastIndexOf('}');if(a<0||z<a)throw new Error('解説を読み取れませんでした');const j=JSON.parse(x.slice(a,z+1)),box=h('div',{class:'exp'},h('p',{class:'src'},sent));
+  const schema={type:'object',properties:{paraphrase:{type:'string'},structure:{type:'string'},grammar:{type:'array',items:{type:'object',properties:{form:{type:'string'},level:{type:'string'},note:{type:'string'}},required:['form','note']}},tricky:{type:'string'}},required:['paraphrase','structure','grammar']};
+  const p=askClaudeData(ask,schema,2500,NOTE_MODEL).then(r=>{let j=r.data;if(!j){const x=r.text||'',a=x.indexOf('{'),z=x.lastIndexOf('}');try{j=JSON.parse(x.slice(a,z+1));}catch(e){j=looseObjects(x,1)[0];}}if(!j||!(j.paraphrase||j.structure))throw new Error('解説を読み取れませんでした');const box=h('div',{class:'exp'},h('p',{class:'src'},sent));
     if(j.paraphrase)box.append(h('h4',null,'やさしい言い換え'),h('p',{class:'para'},j.paraphrase));
     if(j.structure)box.append(h('h4',null,'文の組み立て'),h('p',null,j.structure));
     const g=(j.grammar||[]).filter(x=>x&&x.form);if(g.length){const ul=h('ul');for(const x of g)ul.append(h('li',null,h('b',null,x.form),x.level?h('em',null,x.level):null,x.note||''));box.append(h('h4',null,'文法'),ul);}
