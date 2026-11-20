@@ -893,7 +893,13 @@ async function loadChapter(ch,target){
   }finally{R.busy=false;}
 }
 // several adjustments in a row keep the place they started from (each one alone would slip back to the start of its page)
-function relayout(){if(readerEl.hidden||!R.book||R.busy)return;const k=R.keep,now=currentOff(),off=k&&k.ch===R.ch&&k.at===now?k.off:now;geometry();measure();goOff(off);R.keep={ch:R.ch,off,at:currentOff()};}
+function relayout(){if(readerEl.hidden||!R.book||R.busy)return;if(S.scroll){holdPlace(()=>{geometry();measure();});return;}
+  const k=R.keep,now=currentOff(),off=k&&k.ch===R.ch&&k.at===now?k.off:now;geometry();measure();goOff(off);R.keep={ch:R.ch,off,at:currentOff()};}
+// lay the text out again without moving it: in scroll mode the first character in view stays exactly where it was on screen
+// (going by character alone would snap the text to the start of a line)
+function markPlace(){const g=currentOff();if(!S.scroll)return ()=>goOff(g);const c0=g<=0?null:centerAt(g),d=c0==null?null:c0-winC0(),w0=winC0();
+  return ()=>{const c1=d==null?null:centerAt(g);if(c1!=null)scrollToC(c1-d);else if(g<=0)scrollToC(w0);else goOff(g);};}
+function holdPlace(fn){const back=markPlace();fn();back();}
 // "read" marks: after at least READ_MIN characters, the next paragraph end gets a small button. Pressing it adds that
 // stretch to the day's total (kept apart from the page goals, which follow page turns).
 const READ_MIN=300,READ_SINCE='2026-11-19';
@@ -1056,7 +1062,8 @@ $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   else if(b.dataset.flowV){const off=currentOff();S.scroll=b.dataset.flowV==='scroll';saveSettings();setFlowButtons();geometry();measure();goOff(off);}});
 $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
-let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{sizeInk();relayout();},160);});
+// only a real change of size lays the page out again: iPadOS also fires resize when its own menus and sheets come and go
+let rzT,rzW=innerWidth,rzH=innerHeight;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(innerWidth===rzW&&innerHeight===rzH)return;rzW=innerWidth;rzH=innerHeight;sizeInk();relayout();},160);});
 addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden){saveNow();if(syncDirty)syncPush().catch(()=>{});}});
 
 /* ---------- handwriting: each stroke is tied to a character and stored in font-size units,
@@ -1177,7 +1184,7 @@ function furiParts(surf,read){const segs=[];let i=0;while(i<surf.length){const k
 // add furigana to unknown words and hide the book's own furigana on known ones, then lay the page out again in the same place
 function applyFurigana(){
   if(R.furiDone||!R.words||!R.book||readerEl.hidden)return;R.furiDone=true;if(!furiAuto())return;
-  const toks=R.words.toks||[],W=R.words,off=currentOff();let changed=false;
+  const toks=R.words.toks||[],W=R.words,back=markPlace();let changed=false;
   const wordAt=g=>{let lo=0,hi=W.length-1;while(lo<=hi){const mid=(lo+hi)>>1,w=W[mid];if(g<w.s)hi=mid-1;else if(g>=w.e)lo=mid+1;else return w;}return null;};
   for(let q=toks.length-1;q>=0;q--){const [s,e,lem,read]=toks[q],nd=R.nodes[nodeAt(s)];if(!nd)continue;
     const w=wordAt(s),surf=R.text.slice(s,e),known=Known.has(lem)||Known.has(surf)||!!(w&&Known.has(w.key)),rb=nd.n.parentElement.closest('ruby');
@@ -1186,7 +1193,7 @@ function applyFurigana(){
     const parts=furiParts(surf,read);
     for(let p=parts.length-1;p>=0;p--){const [a,b,r]=parts[p];if(!r||r===hira(surf.slice(a,b)))continue;
       const mid=nd.n.splitText(s-nd.off+a);mid.splitText(b-a);const ruby=document.createElement('ruby');ruby.className='x-furi';mid.replaceWith(ruby);const rt=document.createElement('rt');rt.textContent=r;ruby.append(mid,rt);changed=true;}}
-  if(changed){measure();goOff(off);}
+  if(changed){measure();back();}
 }
 // may several tokens be joined into this entry? Compound nouns join freely; anything glued with particles must be
 // a common word or a set expression; rare/archaic entries and kanji spellings of usually-kana words never join.
