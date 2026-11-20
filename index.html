@@ -1059,7 +1059,7 @@ $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
   else if(b.dataset.themeV){S.theme=b.dataset.themeV;saveSettings();applySettings();}
   else if(b.dataset.fontV){S.font=b.dataset.fontV;saveSettings();applySettings();relayout();}
   else if(b.dataset.dirV){const off=currentOff();R.book.vertical=b.dataset.dirV==='v';for(const x of document.querySelectorAll('[data-dir-v]'))x.setAttribute('aria-pressed',x===b);geometry();measure();goOff(off);}
-  else if(b.dataset.furiV){S.furi=b.dataset.furiV;saveSettings();setFuriButtons();if(S.furi!=='book'&&!Known.size)toast('知っている単語がまだありません。設定から読み込めます',4200);loadChapter(R.ch,{off:currentOff()});}
+  else if(b.dataset.furiV){S.furi=b.dataset.furiV;saveSettings();setFuriButtons();if(S.furi!=='book'&&!Known.size)toast('知っている単語がまだありません。設定から読み込めます',4200);refurigana();}
   else if(b.dataset.flowV){const off=currentOff();S.scroll=b.dataset.flowV==='scroll';saveSettings();setFlowButtons();geometry();measure();goOff(off);}});
 $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
@@ -1183,9 +1183,15 @@ function furiParts(surf,read){const segs=[];let i=0;while(i<surf.length){const k
   let m=null;try{m=read.match(new RegExp(re+'$'));}catch(e){}
   if(!m)return [[0,surf.length,read]];let gi=1;return segs.filter(x=>x[2]).map(x=>[x[0],x[1],m[gi++]]);}
 // add furigana to unknown words and hide the book's own furigana on known ones, then lay the page out again in the same place
-function applyFurigana(){
-  if(R.furiDone||!R.words||!R.book||readerEl.hidden)return;R.furiDone=true;if(!furiAuto())return;
-  const toks=R.words.toks||[],W=R.words,back=markPlace();let changed=false;
+// after the known-word list or the furigana setting changes: take our furigana off and put it on again, on the page as it stands
+// (no reloading the chapter, so the text stays exactly where it was)
+function refurigana(){if(!R.book||readerEl.hidden)return;if(!R.words){R.furiDone=false;return;}const back=markPlace();closeDict();closeSel();
+  const par=new Set();for(const rb of flow.querySelectorAll('ruby.x-furi')){par.add(rb.parentNode);rb.replaceWith(rb.firstChild);}for(const x of par)x.normalize();
+  for(const rb of flow.querySelectorAll('ruby.x-known'))rb.classList.remove('x-known');
+  measure();R.furiDone=false;applyFurigana(back);}
+function applyFurigana(place){
+  if(R.furiDone||!R.words||!R.book||readerEl.hidden)return;R.furiDone=true;if(!furiAuto()){if(place)place();return;}
+  const toks=R.words.toks||[],W=R.words,back=place||markPlace();let changed=!!place;
   const wordAt=g=>{let lo=0,hi=W.length-1;while(lo<=hi){const mid=(lo+hi)>>1,w=W[mid];if(g<w.s)hi=mid-1;else if(g>=w.e)lo=mid+1;else return w;}return null;};
   for(let q=toks.length-1;q>=0;q--){const [s,e,lem,read]=toks[q],nd=R.nodes[nodeAt(s)];if(!nd)continue;
     const w=wordAt(s),surf=R.text.slice(s,e),known=Known.has(lem)||Known.has(surf)||!!(w&&Known.has(w.key)),rb=nd.n.parentElement.closest('ruby');
@@ -1330,7 +1336,7 @@ function entryNode(i,key,ctx){const en=dictEntry(i);let word,read;
       save.setAttribute('aria-pressed','true');save.textContent='追加済み';};}
   let acts=null;
   if(ctx){const kn=h('button',{class:'d-save','aria-pressed':String(Known.has(word))},Known.has(word)?'知っている語（外す）':'知っている語にする');
-    kn.onclick=async()=>{if(Known.has(word))Known.delete(word);else Known.add(word);await saveKnown();const off=currentOff();closeDict();toast(Known.has(word)?`「${word}」を知っている語にしました`:`「${word}」を知っている語から外しました`);loadChapter(R.ch,{off});};
+    kn.onclick=async()=>{if(Known.has(word))Known.delete(word);else Known.add(word);await saveKnown();closeDict();toast(Known.has(word)?`「${word}」を知っている語にしました`:`「${word}」を知っている語から外しました`);refurigana();};
     acts=h('div',{class:'d-acts'},save,kn);}
   return h('div',{class:'d-entry'},h('div',{class:'d-head'},h('span',{class:'d-word'},word),read?h('span',{class:'d-read'},read):null,en.common?h('span',{class:'d-tag'},'常用'):null),acts,ol);}
 // the sentence around a word, for the vocab card
