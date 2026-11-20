@@ -304,6 +304,17 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #flow .rd[aria-pressed=true]{border-color:transparent;color:var(--accent);padding-inline:.2em}
 #flow .rd[aria-pressed=true]::before{content:'✓ 読んだ'}
 #flow .rd-done{color:#66655f;color:color-mix(in srgb,var(--text) 46%,transparent);transition:color .45s ease}
+.quiz .wrap{max-width:640px;width:100%;margin:0 auto;flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.quiz .n{font-size:.78rem;color:var(--mute);margin:6px 0 0}
+.quiz .q{font-family:var(--mincho);font-size:1.22rem;line-height:1.9;margin:10px 0 24px}
+.quiz .ch button{display:block;width:100%;text-align:left;padding:14px 16px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;font-size:1rem;line-height:1.65}
+.quiz .ch button.ok{border-color:#5fa777;background:rgba(95,167,119,.16)}
+.quiz .ch button.no{border-color:#b86a6a;background:rgba(184,106,106,.14)}
+.quiz .ch button[disabled]{opacity:1}
+.quiz .why{margin:18px 0 0;font-size:.92rem;line-height:1.8;color:var(--ink)}
+.quiz .why q{display:block;margin-top:10px;padding-left:12px;border-left:2px solid var(--line);font-family:var(--mincho);color:var(--mute);quotes:none}
+.quiz .wait,.quiz .end{color:var(--mute);line-height:1.9;margin:40px 0}
+.quiz .end b{display:block;font-size:1.6rem;color:var(--ink);margin-bottom:6px}
 .heat{margin:0 0 38px}
 .heat .yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .heat .yr h3{margin:0}
@@ -855,7 +866,7 @@ function pageOfCoord(c){const P=R.pages;for(let k=0;k<P.length;k++)if(c<P[k].e-.
 function pageOfOffset(off){if(off<=0)return 0;const c=centerAt(off);return c==null?R.pages.length-1:pageOfCoord(c);}
 function show(k,save=true){
   if(S.scroll){scrollToC(R.pages[0]?R.pages[0].s:0);return;}
-  closeDict();closeSel();$('#nudge').hidden=true;R.page=k=clamp(k,0,R.pages.length-1);const p=R.pages[k],v=isV(),pad=Math.min(3,p.s),cut=Math.max(0,R.B-(p.e-p.s)),c2=cut/2,ws=p.s-pad-c2;
+  closeDict();closeSel();if($('#nudge').dataset.kind!=='quiz')$('#nudge').hidden=true;R.page=k=clamp(k,0,R.pages.length-1);const p=R.pages[k],v=isV(),pad=Math.min(3,p.s),cut=Math.max(0,R.B-(p.e-p.s)),c2=cut/2,ws=p.s-pad-c2;
   // window shows [s-pad, e-pad], centred; the pad keeps furigana of the neighbouring line out of view
   flow.style.transform=v?`translateX(${ws}px)`:`translateY(${-ws}px)`;
   viewport.style.clipPath=v?`inset(0 ${c2}px 0 ${c2}px)`:`inset(${c2}px 0 ${c2}px 0)`;
@@ -947,6 +958,7 @@ function readMarkAt(x,y){const vr=viewport.getBoundingClientRect();for(const m o
 function toggleRead(m){const b=R.book,e=+m.dataset.e,n=e-(+m.dataset.s),log=LS.get('readlog',{});b.read=b.read||{};const c=b.read[R.ch]=b.read[R.ch]||{};
   if(c[e]){const d=c[e][0];log[d]=Math.max(0,(log[d]||0)-c[e][1]);if(!log[d])delete log[d];delete c[e];m.setAttribute('aria-pressed','false');for(const x of m.blocks||[])x.classList.remove('rd-done');}
   else{const d=todayStr();c[e]=[d,n];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
+  quizCount(R.ch,+m.dataset.s,e,!!c[e],e>=R.text.length);
   LS.set('readlog',log);DB.put('books',b).catch(()=>{});closeDict();}
 // the quiet record of what has been marked as read
 function showStats(){const log=readByDay(),t=todayStr(),day=k=>{const d=new Date();d.setDate(d.getDate()-k);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -1118,6 +1130,60 @@ async function askClaude(content,max=700,model=AI_MODEL){
 function showSheet(title,from,promise){const el=$('#sheet'),body=h('div',{class:'body'},'書いています…');el.textContent='';
   el.append(h('div',{class:'box'},h('h3',null,title),h('div',{class:'from'},from),body,h('div',{class:'foot'},h('button',{class:'ghost',onclick:()=>{el.hidden=true;}},'閉じる'))));el.hidden=false;
   promise.then(t=>{body.textContent=t||'（返事が空でした）';},e=>{body.textContent='AIに届きませんでした：'+(e&&e.message||e);});}
+/* comprehension quizzes: offered after every fourth passage marked 読んだ, and at the end of a chapter. Nothing is sent
+   unless AI is on for this sitting and the offer is taken. */
+const QUIZ_EVERY=4,QUIZ_CTX=250;
+function chapterText(ch){if(R.book&&ch===R.ch&&R.text)return R.text;const d=document.createElement('div');d.innerHTML=R.content.chapters[ch]||'';return plainText(d);}
+function quizCount(ch,s,e,on,chapterEnd){const b=R.book;b.quiz=b.quiz||{segs:[]};const q=b.quiz;q.segs=q.segs.filter(x=>!(x.ch===ch&&x.e===e));if($('#nudge').dataset.kind==='quiz')$('#nudge').hidden=true;if(!on)return;
+  q.segs.push({ch,s,e});const can=R.ai&&aiKey();
+  if(chapterEnd){q.segs=[];if(can)offerQuiz('この章を読み終えました','章のクイズ',()=>runQuiz('chapter',ch));return;}
+  if(q.segs.length>=QUIZ_EVERY){const segs=q.segs.slice(-QUIZ_EVERY);q.segs=[];if(can)offerQuiz(`${QUIZ_EVERY}つ読みました`,'クイズに挑戦',()=>runQuiz('sections',ch,segs));}}
+function offerQuiz(label,btn,go){const el=$('#nudge');el.textContent='';el.dataset.kind='quiz';
+  el.append(h('span',null,label),h('button',{onclick:()=>{el.hidden=true;go();}},btn),h('button',{'aria-label':'閉じる',style:'background:none;color:var(--mute);padding:8px 10px',onclick:()=>{el.hidden=true;}},'×'));el.hidden=false;}
+function quizPrompt(kind,ch,segs){const b=R.book;
+  if(kind==='chapter'){let t=chapterText(ch).trim();const cut=t.length>40000;if(cut)t=t.slice(0,40000);
+    return {n:5,ask:`次は日本語の本『${b.title}』の一章です。日本語を学ぶ上級者（N1を目指す読者）がこの章を理解できたか確かめる、四択の問題を5問作ってください。
+
+・章全体の流れ、出来事や主張、その理由、人物の気持ちや筆者の考えを問うこと。細かすぎる暗記問題は避ける。
+・正解は本文にはっきり書かれていること、または本文から確実に言えることだけにする。
+・問題文・選択肢・解説はすべて日本語。選択肢は4つで、正解は1つ。
+・quote には根拠となる本文の一文をそのまま入れる。
+
+【章の本文${cut?'（長いため冒頭部分のみ）':''}】
+${t}`};}
+  const sorted=segs.slice().sort((x,y)=>x.ch-y.ch||x.s-y.s),runs=[];for(const g of sorted){const l=runs[runs.length-1];if(l&&l.ch===g.ch&&l.e===g.s)l.e=g.e;else runs.push({ch:g.ch,s:g.s,e:g.e});}
+  let body='';runs.forEach((r,i)=>{const t=chapterText(r.ch),pre=t.slice(Math.max(0,r.s-QUIZ_CTX),r.s).trim(),post=t.slice(r.e,r.e+QUIZ_CTX).trim();
+    body+=(pre?`【前の文脈（出題しない）】
+…${pre}
+
+`:'')+`【読んだ部分${runs.length>1?i+1:''}（ここから出題）】
+${t.slice(r.s,r.e).trim()}
+
+`+(post?`【後の文脈（出題しない）】
+${post}…
+
+`:'');});
+  return {n:3,ask:`次は日本語の本『${b.title}』の一部です。日本語を学ぶ上級者（N1を目指す読者）が「読んだ部分」を理解できたか確かめる、四択の問題を3問作ってください。
+
+・出題するのは「読んだ部分」に書かれている内容だけ。「前の文脈」「後の文脈」は話の流れを理解するための参考で、そこにしかない情報を問題や正解にしてはいけない。
+・正解は「読んだ部分」にはっきり書かれていること、またはそこから確実に言えることだけにする。
+・問題文・選択肢・解説はすべて日本語。選択肢は4つで、正解は1つ。
+・quote には根拠となる「読んだ部分」の一文をそのまま入れる。
+
+${body}`};}
+const QUIZ_FORMAT='\n\n答えはJSONだけで返してください（前後に説明やコードブロックを付けない）。形式：{"questions":[{"q":"問題文","choices":["選択肢","選択肢","選択肢","選択肢"],"answer":正解の番号（0〜3）,"why":"短い解説","quote":"根拠の一文"}]}';
+function parseQuiz(t){const a=t.indexOf('{'),z=t.lastIndexOf('}');if(a<0||z<a)throw new Error('問題を読み取れませんでした');const j=JSON.parse(t.slice(a,z+1));
+  const qs=(j.questions||[]).filter(x=>x&&x.q&&Array.isArray(x.choices)&&x.choices.length>=2&&Number.isInteger(x.answer)&&x.answer>=0&&x.answer<x.choices.length);if(!qs.length)throw new Error('問題を読み取れませんでした');return qs;}
+function runQuiz(kind,ch,segs){if(!R.ai||!aiKey()||!R.book)return;const pr=quizPrompt(kind,ch,segs),title=kind==='chapter'?'章のクイズ':'読解クイズ';let ctitle='';for(let i=ch;i>=0&&!ctitle;i--)ctitle=R.book.chapters[i].title||'';
+  const wrap=h('div',{class:'wrap'},h('p',{class:'wait'},'問題を作っています…')),box=h('div',{class:'picker quiz',role:'dialog','aria-label':title},h('div',{class:'top'},h('h2',null,title+(ctitle?`　${ctitle}`:'')),h('button',{onclick:()=>box.remove()},'閉じる')),wrap);
+  document.body.append(box);
+  askClaude(pr.ask+QUIZ_FORMAT,kind==='chapter'?2600:1700).then(parseQuiz).then(qs=>{let i=0,right=0;
+    const show=()=>{wrap.textContent='';if(i>=qs.length){wrap.append(h('div',{class:'end'},h('b',null,`${qs.length}問中 ${right}問正解`),right===qs.length?'すべて正解です。':'本文に戻って、気になったところを読み直せます。'),h('div',{class:'foot'},h('button',{class:'add',onclick:()=>box.remove()},'本に戻る')));return;}
+      const q=qs[i],chs=h('div',{class:'ch'}),after=h('div');let done=false;
+      q.choices.forEach((c,k)=>chs.append(h('button',{onclick:e=>{if(done)return;done=true;const ok=k===q.answer;if(ok)right++;[...chs.children].forEach((x,m)=>{x.disabled=true;if(m===q.answer)x.classList.add('ok');else if(m===k)x.classList.add('no');});
+        after.append(h('p',{class:'why'},(ok?'正解。':'不正解。')+(q.why||''),q.quote?h('q',null,q.quote):null),h('div',{class:'foot',style:'margin-top:22px'},h('button',{class:'add',onclick:()=>{i++;show();}},i===qs.length-1?'結果を見る':'次へ')));}},c)));
+      wrap.append(h('p',{class:'n'},`${i+1} / ${qs.length}`),h('p',{class:'q'},q.q),chs,after);wrap.scrollTop=0;};
+    show();}).catch(e=>{wrap.textContent='';wrap.append(h('p',{class:'wait'},'クイズを作れませんでした：'+(e&&e.message||e)));});}
 // shown once when a book opens; it goes away on the first page turn, which leaves AI off for this sitting
 function offerAI(){if(!aiKey()||!R.book)return;const el=$('#nudge');if(!el.hidden)return;el.textContent='';el.dataset.kind='offer';R.progAt=Date.now();
   el.append(h('span',null,'この読書でAIを使いますか'),h('button',{onclick:()=>{R.ai={start:R.g};$('#aiInkRow').hidden=false;el.textContent='';el.append(h('span',{style:'padding-right:12px'},'AIオン　本を閉じるときに要約します'));setTimeout(()=>{if(el.textContent.startsWith('AIオン'))el.hidden=true;},2600);}},'使う'));el.hidden=false;}
