@@ -330,6 +330,20 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .quiz .why q{display:block;margin-top:10px;padding-left:12px;border-left:2px solid var(--line);font-family:var(--mincho);color:var(--mute);quotes:none}
 .quiz .wait,.quiz .end{color:var(--mute);line-height:1.9;margin:40px 0}
 .quiz .end b{display:block;font-size:1.6rem;color:var(--ink);margin-bottom:6px}
+.known-n{font-size:.82rem;color:var(--mute);margin:-6px 0 26px}
+.known-n b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.hlw .wrap{max-width:680px;width:100%;margin:0 auto;flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+.hlw .sent{font-family:var(--mincho);font-size:1.5rem;line-height:2.1;margin:8px 0 6px;touch-action:none;-webkit-user-select:none;user-select:none;cursor:pointer}
+.hlw .sent span.on{background:rgba(224,188,92,.38);border-radius:2px}
+.hlw .hint{font-size:.8rem;color:var(--mute);margin:0 0 20px;min-height:1.4em}
+.hlw .acts{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+.hlw .acts .ghost{padding:9px 16px;border:1px solid var(--line);border-radius:999px;font-size:.88rem}
+.hlw .padhead{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;color:var(--mute);margin:0 0 6px}
+.hlw .padhead button{padding:6px 10px;color:var(--mute);font-size:.8rem}
+.hlw .pad{display:block;width:100%;height:230px;border:1px dashed var(--line);border-radius:10px;touch-action:none;margin-bottom:20px;background:rgba(255,255,255,.015)}
+.quotes .q-ink{display:block;max-width:min(100%,520px);height:auto;margin:6px 0 2px;border-left:2px solid var(--line);padding-left:10px}
+.hlw .out{border-top:1px solid var(--line);padding-top:18px}
+.hlw .out .wait{color:var(--mute)}
 .heat{margin:0 0 38px}
 .heat .yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .heat .yr h3{margin:0}
@@ -372,7 +386,6 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
       <button data-view="today">今日</button><button data-view="shelf">本棚</button><button data-view="vocab">単語</button><button data-view="quotes">書き抜き</button><button data-view="settings">設定</button>
     </nav>
     <button class="add" id="addBtn">本を追加</button>
-    <label class="simple"><input type="checkbox" id="simpleT"><span>シンプル表示</span></label>
   </div>
   <div id="view"></div>
   <input type="file" id="file" accept=".epub,application/epub+zip" multiple hidden>
@@ -410,6 +423,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
     <div class="row"><span>ふりがな</span><div class="seg" id="segFuri"><button data-furi-v="auto">知らない語だけ</button><button data-furi-v="book">本のまま</button></div></div>
     <div class="row"><span>送り</span><div class="seg" id="segFlow"><button data-flow-v="page">ページ</button><button data-flow-v="scroll">スクロール</button></div></div>
     <div class="row"><span>手書き</span><div class="seg" id="segInk"><button data-ink-v="draw" aria-pressed="true">書く</button><button data-ink-v="erase">消す</button><button data-ink-undo="1">戻す</button></div></div>
+    <div class="row" id="aiRow" hidden><span>AI</span><div class="seg"><button data-ai="quiz">クイズ</button><button data-ai="sum">今日の要約</button></div></div>
     <div class="row" id="aiInkRow" hidden><span>このページの手書き</span><button class="ghost" id="aiInkBtn">AIノートを作る</button></div>
   </div>
 </section>
@@ -438,7 +452,7 @@ const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new
   put(s,v){if(s!=='content')markDirty();if(!this.db){this.mem[s].set(v.id,v);return Promise.resolve();}return this.run(s,'readwrite',o=>o.put(v));},
   del(s,id){if(s!=='content')markDirty();if(!this.db){this.mem[s].delete(id);return Promise.resolve();}return this.run(s,'readwrite',o=>o.delete(id));}
 };
-const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto',mg:0},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());
+const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto',mg:0},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());S.simple=false; // the simple view is gone: one view, AI only when asked for
 if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
 const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='log'||k==='folders'||k==='readlog'||k==='quizlog')markDirty();}};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -454,7 +468,7 @@ function parseWordList(text){let arr;try{const j=JSON.parse(text);arr=Array.isAr
   if(!arr)arr=text.split(/[\r\n,、\t]+/);return arr.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);}
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
-  d.dataset.font=S.font;$('#simpleT').checked=!!S.simple;if(typeof drawInk==='function')drawInk();
+  d.dataset.font=S.font;if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
 
@@ -593,6 +607,7 @@ function getPlan(books){let p=LS.get('plan',null);
   return makePlan(books);}
 const itemState=(it,b)=>{const g=bookG(b),done=!!it.done||g>=it.target-1;return {done,frac:done?1:clamp((g-it.start)/Math.max(1,it.target-it.start),0,1)};};
 // page goals: today, this month, this year. All three come from the one daily number in settings.
+const knownLine=()=>h('p',{class:'known-n'},'知っている単語　',h('b',null,Known.size.toLocaleString()),'語');
 function goalsNode(){
   // counted from the 読んだ marks; days before the marks existed keep their old page-turn count
   const log=readByDay(),d=new Date(),y=d.getFullYear(),t=todayStr(),ym=t.slice(0,7),yy=t.slice(0,4);let day=0,mon=0,yr=0;
@@ -606,7 +621,7 @@ function renderToday(root,books){
   if(!books.length){root.append(emptyShelf());return;}
   const plan=getPlan(books),d=new Date();
   root.append(h('div',{class:'day'},h('h2',null,`${d.getMonth()+1}月${d.getDate()}日`),h('span',null,'日月火水木金土'[d.getDay()]+'曜日')));
-  root.append(goalsNode());
+  root.append(goalsNode(),knownLine());
   if(!plan.items.length){root.append(h('div',{class:'empty'},h('p',{class:'big'},'今日読む本がありません'),h('p',null,'本棚で本を開くか「読書中」にすると、毎日の分がここに出ます。'),h('button',{class:'add',onclick:()=>setView('shelf')},'本棚を開く')));return;}
   const rows=plan.items.map(it=>{const b=books.find(x=>x.id===it.id);return Object.assign({it,b},itemState(it,b));});
   const next=rows.find(r=>!r.done),left=Math.ceil(rows.reduce((a,r)=>a+r.it.pages*(1-r.frac),0));
@@ -623,8 +638,8 @@ function renderShelf(root,books){
   const st=Object.assign({filter:'all',sort:'recent',folder:''},LS.get('shelf',{})),set=p=>{LS.set('shelf',Object.assign(st,p));renderHome();};
   let folders=LS.get('folders',[]);for(const b of books)if(b.folder&&!folders.includes(b.folder))folders.push(b.folder);
   const FAV='\u2605';if(st.folder&&st.folder!==FAV&&!folders.includes(st.folder))st.folder='';
-  if(S.simple){st.filter='all';const cur=books.filter(b=>b.opened).sort((x,y)=>y.opened-x.opened)[0];
-    if(cur){const hn=heroNode(cur,`${pct(cur)}% まで読みました`,'続きを読む');hn.classList.add('shelf-hero');root.append(hn);}}
+  {const cur=books.filter(b=>b.opened).sort((x,y)=>y.opened-x.opened)[0];
+    if(cur){const hn=heroNode(cur,`${pct(cur)}% まで読みました`,'続きを読む');hn.classList.add('shelf-hero');root.append(hn);}root.append(knownLine());}
   // folders
   const frow=h('div',{class:'chips folders'});
   // hold a folder (or favourites) to make it the view the library opens with
@@ -688,7 +703,7 @@ async function renderQuotes(root,books){
   for(const id of seen){const mine=all.filter(q=>q.bookId===id).sort((a,b)=>a.g-b.g),bk=books.find(b=>b.id===id),ul=h('ul',{class:'quotes'});
     root.append(h('div',{class:'qbook'},`『${mine[0].book}』`));
     for(const q of mine){let where='';if(bk)for(let i=q.ch;i>=0&&!where;i--)where=(bk.chapters[i]||{}).title||'';
-      ul.append(h('li',null,h('p',{class:'q'},q.text),h('div',{class:'acts'},h('span',null,where),
+      ul.append(h('li',null,h('p',{class:'q'},q.text),q.ink&&q.ink.strokes&&q.ink.strokes.length?h('img',{class:'q-ink',alt:'手書きメモ',src:inkImage(q.ink)}):null,h('div',{class:'acts'},h('span',null,where),
         bk?h('button',{onclick:async()=>{bk.pos={ch:q.ch,off:q.off};await DB.put('books',bk);openBook(bk.id);}},'本文を開く'):null,
         h('button',{onclick:async()=>{try{await navigator.clipboard.writeText(q.text);toast('コピーしました');}catch(e){toast('コピーできませんでした');}}},'コピー'),
         h('button',{onclick:async()=>{await DB.del('quotes',q.id);renderHome();}},'削除'))));}
@@ -758,12 +773,11 @@ async function restoreBackup(data){
 /* ---------- automatic sync: one file in a private GitHub repo. Books themselves are not uploaded. ---------- */
 const SYNC_FILE='gyokan.json',syncCfg=()=>LS.get('sync',null);
 let syncBusy=false,syncT=null,syncDirty=false,syncApplying=false;
-function markDirty(){if(syncApplying||!syncCfg()||!DB.db)return;syncDirty=true;clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
+function markDirty(){if(syncApplying||!syncCfg())return;syncDirty=true;clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
 function gh(opt={}){const c=syncCfg();return fetch(`https://api.github.com/repos/${c.repo}/contents/${SYNC_FILE}`,Object.assign({},opt,{headers:Object.assign({'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},opt.headers||{})}));}
 const b64=str=>{const u=new TextEncoder().encode(str);let t='';for(let i=0;i<u.length;i+=0x8000)t+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(t);};
 const syncFail=e=>{LS.set('syncState',{ok:false,at:Date.now(),msg:String(e&&e.message||e)});};
-// never push from the in-memory fallback: it holds no books, so it would overwrite the saved list with an empty one
-async function syncPush(){if(!syncCfg()||syncBusy||!DB.db)return;syncBusy=true;clearTimeout(syncT);
+async function syncPush(){if(!syncCfg()||syncBusy)return;syncBusy=true;clearTimeout(syncT);
   try{const data=await makeBackup();let sha=LS.get('syncSha',null);
     const put=()=>gh({method:'PUT',body:JSON.stringify(Object.assign({message:'sync '+data.when,content:b64(JSON.stringify(data))},sha?{sha}:{}))});
     let r=await put();
@@ -798,7 +812,7 @@ function keyRow(){const has=!!LS.get('key',''),inp=h('input',{type:'password',pl
   const save=h('button',{class:'ghost',onclick:()=>{const v=inp.value.trim();if(!v)return;LS.set('key',v);renderHome();toast('キーを保存しました');}},'保存');
   const test=h('button',{class:'ghost',onclick:async()=>{test.textContent='確認中…';try{toast('AI：'+await askClaude('「接続できました」とだけ返してください。',30),4000);}catch(e){toast('つながりません：'+(e&&e.message||e),8000);}test.textContent='接続を試す';}},'接続を試す');
   const del=h('button',{class:'ghost',onclick:()=>{LS.set('key','');renderHome();}},'削除');
-  return h('div',{class:'row'},h('span',null,'AI（Claude APIキー）',h('small',null,'本を開いて「使う」を選んだ読書でだけ使います。送るのは、閉じるときの要約1回と、自分で押した手書きの読み取りだけです。キーはこの端末にだけ保存し、バックアップには入れません。')),h('div',{class:'step'},...(has?[test,del]:[inp,save])));}
+  return h('div',{class:'row'},h('span',null,'AI（Claude APIキー）',h('small',null,'自分で押したときだけ使います（クイズ、文の解説、今日の要約、手書きの読み取り）。押さないかぎり何も送りません。キーはこの端末にだけ保存し、バックアップには入れません。')),h('div',{class:'step'},...(has?[test,del]:[inp,save])));}
 function renderSettings(root){
   const out=h('output',null,String(S.pages)),bump=n=>{S.pages=clamp(S.pages+n,3,60);saveSettings();out.textContent=S.pages;};
   root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'設定'))),h('div',{class:'set'},
@@ -814,7 +828,6 @@ function renderSettings(root){
 $('#knownFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const before=Known.size;for(const w of parseWordList(await f.text()))Known.add(w);await saveKnown();toast(`${(Known.size-before).toLocaleString()}語を追加しました（合計 ${Known.size.toLocaleString()}語）`,4500);renderHome();}catch(err){toast('読み込めませんでした',4200);}};
 $('#backupFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const r=await restoreBackup(JSON.parse(await f.text()));toast(`読み込みました：本${r.books}冊、単語${r.vocab}語`+(r.pending?`（未追加の本${r.pending}冊は追加時に反映）`:''),5000);renderHome();}catch(err){toast(err.message||'読み込めませんでした',4200);}};
 for(const t of document.querySelectorAll('.tabs button'))t.onclick=()=>setView(t.dataset.view);
-$('#simpleT').onchange=e=>{S.simple=e.target.checked;saveSettings();toast(S.simple?'シンプル表示：読書と辞書、単語の保存だけにしました':'すべての機能を表示します');renderHome();};
 document.addEventListener('click',()=>document.querySelectorAll('.menu').forEach(m=>m.remove()));
 $('#addBtn').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{addFiles(e.target.files);e.target.value='';};
@@ -974,7 +987,7 @@ function placeReadMarks(){
 function readMarkAt(x,y){const vr=viewport.getBoundingClientRect();for(const m of flow.querySelectorAll('.rd')){const r=m.getBoundingClientRect();if(r.width<1||r.right<vr.left||r.left>vr.right||r.bottom<vr.top||r.top>vr.bottom)continue;const px=isV()?6:14,py=isV()?14:6;if(x>=r.left-px&&x<=r.right+px&&y>=r.top-py&&y<=r.bottom+py)return m;}return null;}
 function toggleRead(m){const b=R.book,e=+m.dataset.e,n=e-(+m.dataset.s),log=LS.get('readlog',{});b.read=b.read||{};const c=b.read[R.ch]=b.read[R.ch]||{};
   if(c[e]){const d=c[e][0];log[d]=Math.max(0,(log[d]||0)-c[e][1]);if(!log[d])delete log[d];delete c[e];m.setAttribute('aria-pressed','false');for(const x of m.blocks||[])x.classList.remove('rd-done');}
-  else{const d=todayStr();c[e]=[d,n];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
+  else{const d=todayStr();c[e]=[d,n,Date.now()];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
   quizCount(R.ch,+m.dataset.s,e,!!c[e],e>=R.text.length);
   LS.set('readlog',log);DB.put('books',b).catch(()=>{});closeDict();}
 function quizStatsNode(){const l=LS.get('quizlog',{}),keys=Object.keys(QTYPES).filter(k=>l[k]&&l[k][1]);if(!keys.length)return null;const box=h('div',{class:'qstats'},h('h3',null,'読解クイズ　問題の種類ごとの正答率'));
@@ -1010,7 +1023,7 @@ async function openBook(id){
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
   for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);setFlowButtons();setFuriButtons();
   const tt=$('.toast');if(tt)tt.hidden=true;$('#home').hidden=true;readerEl.hidden=false;setUi(false);closePanels();
-  sizeInk();await loadChapter(book.pos.ch,{off:book.pos.off});offerAI();
+  sizeInk();await loadChapter(book.pos.ch,{off:book.pos.off});$('#aiInkRow').hidden=$('#aiRow').hidden=!aiKey();
 }
 async function nudge(plan){
   const books=await DB.all('books'),nx=plan.items.find(x=>!x.done&&x.id!==R.book.id&&books.some(b=>b.id===x.id)),el=$('#nudge');el.textContent='';el.dataset.kind='plan';
@@ -1019,10 +1032,7 @@ async function nudge(plan){
   el.hidden=false;
 }
 function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();if(syncDirty)syncPush().catch(()=>{});
-  // AI summary: only if this sitting opted in, and only once, on closing
-  let sum=null;if(R.ai&&R.book&&!S.simple){const endG=R.before[R.ch]+viewEndOff();if(endG-R.ai.start>=300)sum={title:R.book.title,text:sessionText(R.ai.start,endG)};}
   readerEl.hidden=true;$('#home').hidden=false;flow.textContent='';for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];R.book=null;R.ink=null;R.ai=null;ictx.clearRect(0,0,innerWidth,innerHeight);renderHome();
-  if(sum)showSheet('今回の要約',`『${sum.title}』`,askClaude('次の文章は、読者がたった今読み終えた日本語の本の一節です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+sum.text));
 }
 function setUi(on){readerEl.classList.toggle('ui',on);}
 const setFuriButtons=()=>{for(const x of document.querySelectorAll('[data-furi-v]'))x.setAttribute('aria-pressed',(x.dataset.furiV==='book')===(S.furi==='book'));};
@@ -1094,7 +1104,8 @@ $('#tocBtn').onclick=()=>{const t=$('#toc'),was=t.hidden;closePanels();t.hidden=
 $('#notesBtn').onclick=()=>openNotes();
 $('#aaBtn').onclick=()=>{const a=$('#aa'),was=a.hidden;closePanels();a.hidden=!was;};
 $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);closePanels();setUi(false);toast(R.erase?'消す：ペンでなぞった線が消えます':'書く：ペンで書き込めます',2200);}
+  if(b.dataset.ai){closePanels();setUi(false);if(b.dataset.ai==='quiz')runQuiz('sections',R.ch);else sumToday();}
+  else if(b.dataset.inkV){R.erase=b.dataset.inkV==='erase';for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x===b);closePanels();setUi(false);toast(R.erase?'消す：ペンでなぞった線が消えます':'書く：ペンで書き込めます',2200);}
   else if(b.dataset.inkUndo){if(R.ink&&R.ink.strokes.length){R.ink.strokes.pop();saveInk();drawInk();}}
   else if(b.id==='aiInkBtn'){readInk();}
   else if(b.dataset.mg){const was=S.mg||0;S.mg=clamp(was+ +b.dataset.mg,0,12);if(S.mg!==was){saveSettings();relayout();}toast(S.mg?`上下の余白 +${S.mg}`:'上下の余白 標準',1200);}
@@ -1140,7 +1151,7 @@ function addStroke(pts){if(!R.ink)return;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(c
 
 /* ---------- AI: full view only, opted into for one sitting at a time ---------- */
 const AI_MODEL='claude-opus-5-5',NOTE_MODEL='claude-sonnet-5-5'; // summaries on Opus, handwriting notes on Sonnet
-const aiKey=()=>S.simple?'':LS.get('key','');
+const aiKey=()=>LS.get('key','');
 async function claudePost(body){
   const call=ver=>fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':LS.get('key',''),'anthropic-version':ver,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});
   let r=await call('2026-10-21'),j=await r.json().catch(()=>null);
@@ -1167,18 +1178,24 @@ function showSheet(title,from,promise){const el=$('#sheet'),body=h('div',{class:
   promise.then(t=>{if(t instanceof Node){body.textContent='';body.append(t);}else body.textContent=t||'（返事が空でした）';},e=>{body.textContent='AIに届きませんでした：'+(e&&e.message||e);});}
 /* comprehension quizzes: offered after every fourth passage marked 読んだ, and at the end of a chapter. Nothing is sent
    unless AI is on for this sitting and the offer is taken. */
-const QUIZ_EVERY=4,QUIZ_CTX=250;
+const QUIZ_CTX=250;
 // the kinds of question the JLPT reading section asks; every quiz question is one of these, and answers are tallied by kind
 const QTYPES={ref:'指示語',why:'理由',view:'考え・気持ち',para:'言い換え',match:'内容一致'};
 const QTYPE_ASK='\n\n問題は日本語能力試験（N2・N1）の読解と同じ種類にし、できるだけ違う種類を混ぜてください。それぞれの問題の type に種類を入れます。\n・ref：指示語（「これ」「それ」「そのこと」などが何を指すか）や、下線部が指す内容\n・why：理由・原因（「なぜ〜か」「〜のはどうしてか」）\n・view：筆者の考え・主張、または人物の気持ち\n・para：言い換え（ある表現や一文と同じ意味のものはどれか）\n・match：内容一致（本文の内容と合うものはどれか）\n選択肢は、本文をきちんと読んでいないと選んでしまいそうな紛らわしいものにしてください。';
 function quizLog(type,ok){const l=LS.get('quizlog',{}),k=QTYPES[type]?type:'match',c=l[k]||[0,0];c[1]++;if(ok)c[0]++;l[k]=c;LS.set('quizlog',l);}
 function chapterText(ch){if(R.book&&ch===R.ch&&R.text)return R.text;const d=document.createElement('div');d.innerHTML=R.content.chapters[ch]||'';return plainText(d);}
-function quizCount(ch,s,e,on,chapterEnd){const b=R.book;b.quiz=b.quiz||{segs:[]};const q=b.quiz;q.segs=q.segs.filter(x=>!(x.ch===ch&&x.e===e));if($('#nudge').dataset.kind==='quiz')$('#nudge').hidden=true;if(!on)return;
-  q.segs.push({ch,s,e});const can=R.ai&&aiKey();
-  if(chapterEnd){q.segs=[];if(can)offerQuiz('この章を読み終えました','章のクイズ',()=>runQuiz('chapter',ch));return;}
-  if(q.segs.length>=QUIZ_EVERY){const segs=q.segs.slice(-QUIZ_EVERY);q.segs=[];if(can)offerQuiz(`${QUIZ_EVERY}つ読みました`,'クイズに挑戦',()=>runQuiz('sections',ch,segs));}}
-function offerQuiz(label,btn,go){const el=$('#nudge');el.textContent='';el.dataset.kind='quiz';
-  el.append(h('span',null,label),h('button',{onclick:()=>{el.hidden=true;go();}},btn),h('button',{'aria-label':'閉じる',style:'background:none;color:var(--mute);padding:8px 10px',onclick:()=>{el.hidden=true;}},'×'));el.hidden=false;}
+// after each 読んだ: a small クイズ pill for a few seconds (and 章のクイズ on a chapter's last passage). Nothing is sent unless it is pressed.
+let quizT=null;
+function quizCount(ch,s,e,on,chapterEnd){const el=$('#nudge');if(el.dataset.kind==='quiz')el.hidden=true;if(!on||!aiKey())return;
+  el.textContent='';el.dataset.kind='quiz';el.append(h('span',null,chapterEnd?'この章を読み終えました':'読んだ分を'),h('button',{onclick:()=>{el.hidden=true;runQuiz('sections',ch);}},'クイズ'),
+    chapterEnd?h('button',{onclick:()=>{el.hidden=true;runQuiz('chapter',ch);}},'章のクイズ'):'',h('button',{'aria-label':'閉じる',style:'background:none;color:var(--mute);padding:8px 10px',onclick:()=>{el.hidden=true;}},'×'));
+  el.hidden=false;clearTimeout(quizT);quizT=setTimeout(()=>{if(el.dataset.kind==='quiz')el.hidden=true;},chapterEnd?15000:7000);}
+// what a quiz covers: everything marked 読んだ today in this book since the last quiz; if there is nothing new, all of today's reading
+function todaySegs(fresh){const b=R.book,t=todayStr(),since=b.quizAt||0,all=[];for(const ch in b.read||{})for(const e in b.read[ch]){const m=b.read[ch][e];if(m[0]===t)all.push({ch:+ch,s:+e-m[1],e:+e,ts:m[2]||0});}
+  const nw=all.filter(x=>x.ts>since);return fresh&&nw.length?nw:all;}
+function sumToday(){if(!aiKey()||!R.book)return;const segs=todaySegs(false).sort((x,y)=>x.ch-y.ch||x.s-y.s);if(!segs.length){toast('今日「読んだ」を押した部分がまだありません',3200);return;}
+  const text=segs.map(g=>chapterText(g.ch).slice(g.s,g.e).trim()).join('\n').slice(-14000);
+  showSheet('今日の要約',`『${R.book.title}』`,askClaude('次の文章は、読者が今日読んだ日本語の本の一部です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+text));}
 function quizPrompt(kind,ch,segs){const b=R.book;
   if(kind==='chapter'){let t=chapterText(ch).trim();const cut=t.length>40000;if(cut)t=t.slice(0,40000);
     return {n:5,ask:`次は日本語の本『${b.title}』の一章です。日本語を学ぶ上級者（N1を目指す読者）がこの章を理解できたか確かめる、四択の問題を5問作ってください。
@@ -1191,7 +1208,8 @@ function quizPrompt(kind,ch,segs){const b=R.book;
 【章の本文${cut?'（長いため冒頭部分のみ）':''}】
 ${t}`};}
   const sorted=segs.slice().sort((x,y)=>x.ch-y.ch||x.s-y.s),runs=[];for(const g of sorted){const l=runs[runs.length-1];if(l&&l.ch===g.ch&&l.e===g.s)l.e=g.e;else runs.push({ch:g.ch,s:g.s,e:g.e});}
-  let body='';runs.forEach((r,i)=>{const t=chapterText(r.ch),pre=t.slice(Math.max(0,r.s-QUIZ_CTX),r.s).trim(),post=t.slice(r.e,r.e+QUIZ_CTX).trim();
+  let total=0;for(let k=runs.length-1;k>=0;k--){total+=runs[k].e-runs[k].s;if(total>30000){runs.splice(0,k);break;}}
+  const nq=total<1500?3:total<5000?4:5;let body='';runs.forEach((r,i)=>{const t=chapterText(r.ch),pre=t.slice(Math.max(0,r.s-QUIZ_CTX),r.s).trim(),post=t.slice(r.e,r.e+QUIZ_CTX).trim();
     body+=(pre?`【前の文脈（出題しない）】
 …${pre}
 
@@ -1202,7 +1220,7 @@ ${t.slice(r.s,r.e).trim()}
 ${post}…
 
 `:'');});
-  return {n:3,ask:`次は日本語の本『${b.title}』の一部です。日本語を学ぶ上級者（N1を目指す読者）が「読んだ部分」を理解できたか確かめる、四択の問題を3問作ってください。
+  return {n:nq,ask:`次は日本語の本『${b.title}』の一部です。日本語を学ぶ上級者（N1を目指す読者）が「読んだ部分」を理解できたか確かめる、四択の問題を${nq}問作ってください。
 
 ・出題するのは「読んだ部分」に書かれている内容だけ。「前の文脈」「後の文脈」は話の流れを理解するための参考で、そこにしかない情報を問題や正解にしてはいけない。
 ・正解は「読んだ部分」にはっきり書かれていること、またはそこから確実に言えることだけにする。
@@ -1214,34 +1232,69 @@ const QUIZ_FORMAT=QTYPE_ASK+'\n\n答えはJSONだけで返してください（�
 const QUIZ_SCHEMA={type:'object',properties:{questions:{type:'array',items:{type:'object',properties:{type:{type:'string',enum:['ref','why','view','para','match']},q:{type:'string'},choices:{type:'array',items:{type:'string'}},answer:{type:'integer'},why:{type:'string'},quote:{type:'string'}},required:['type','q','choices','answer','why']}}},required:['questions']};
 function parseQuiz(r){let list;if(r.data)list=r.data.questions;else{const t=r.text||'';try{const a=t.indexOf('{'),z=t.lastIndexOf('}');list=JSON.parse(t.slice(a,z+1)).questions;}catch(e){list=looseObjects(t,2);}} // a reply cut short still yields the questions that were finished
   const qs=(Array.isArray(list)?list:[]).filter(x=>x&&x.q&&Array.isArray(x.choices)&&x.choices.length>=2&&Number.isInteger(x.answer)&&x.answer>=0&&x.answer<x.choices.length);if(!qs.length)throw new Error('問題を読み取れませんでした');return qs;}
-function runQuiz(kind,ch,segs){if(!R.ai||!aiKey()||!R.book)return;const pr=quizPrompt(kind,ch,segs),title=kind==='chapter'?'章のクイズ':'読解クイズ';let ctitle='';for(let i=ch;i>=0&&!ctitle;i--)ctitle=R.book.chapters[i].title||'';
+function runQuiz(kind,ch,segs){if(!aiKey()||!R.book)return;if(kind==='sections'&&!segs){segs=todaySegs(true);if(!segs.length){toast('今日「読んだ」を押した部分がまだありません',3200);return;}}
+  const book=R.book,pr=quizPrompt(kind,ch,segs),title=kind==='chapter'?'章のクイズ':'読解クイズ';let ctitle='';for(let i=ch;i>=0&&!ctitle;i--)ctitle=R.book.chapters[i].title||'';
   const wrap=h('div',{class:'wrap'},h('p',{class:'wait'},'問題を作っています…')),box=h('div',{class:'picker quiz',role:'dialog','aria-label':title},h('div',{class:'top'},h('h2',null,title+(ctitle?`　${ctitle}`:'')),h('button',{onclick:()=>box.remove()},'閉じる')),wrap);
   document.body.append(box);
-  askClaudeData(pr.ask+QUIZ_FORMAT,QUIZ_SCHEMA,kind==='chapter'?8000:5000).then(parseQuiz).then(qs=>{let i=0,right=0;
+  askClaudeData(pr.ask+QUIZ_FORMAT,QUIZ_SCHEMA,kind==='chapter'?8000:5000).then(parseQuiz).then(qs=>{let i=0,right=0;if(kind==='sections'){book.quizAt=Date.now();DB.put('books',book).catch(()=>{});}
     const show=()=>{wrap.textContent='';if(i>=qs.length){wrap.append(h('div',{class:'end'},h('b',null,`${qs.length}問中 ${right}問正解`),right===qs.length?'すべて正解です。':'本文に戻って、気になったところを読み直せます。'),h('div',{class:'foot'},h('button',{class:'add',onclick:()=>box.remove()},'本に戻る')));return;}
       const q=qs[i],chs=h('div',{class:'ch'}),after=h('div');let done=false;
       q.choices.forEach((c,k)=>chs.append(h('button',{onclick:e=>{if(done)return;done=true;const ok=k===q.answer;if(ok)right++;quizLog(q.type,ok);[...chs.children].forEach((x,m)=>{x.disabled=true;if(m===q.answer)x.classList.add('ok');else if(m===k)x.classList.add('no');});
         after.append(h('p',{class:'why'},(ok?'正解。':'不正解。')+(q.why||''),q.quote?h('q',null,q.quote):null),h('div',{class:'foot',style:'margin-top:22px'},h('button',{class:'add',onclick:()=>{i++;show();}},i===qs.length-1?'結果を見る':'次へ')));}},c)));
       wrap.append(h('p',{class:'n'},`${i+1} / ${qs.length}　${QTYPES[q.type]||QTYPES.match}`),h('p',{class:'q'},q.q),chs,after);wrap.scrollTop=0;};
     show();}).catch(e=>{wrap.textContent='';wrap.append(h('p',{class:'wait'},'クイズを作れませんでした：'+(e&&e.message||e)),h('div',{class:'foot'},h('button',{class:'add',onclick:()=>{box.remove();runQuiz(kind,ch,segs);}},'もう一度作る')));});}
-// 解説: one sentence taken apart on request (long-press bar, AI sittings only)
-function explainSel(){const sl=R.sel;if(!sl||!R.ai||!aiKey())return;const t=R.text,sent=t.slice(sl.s,sl.e).trim(),pre=t.slice(Math.max(0,sl.s-200),sl.s).trim(),post=t.slice(sl.e,sl.e+120).trim(),title=R.book.title;closeSel();
-  const ask=`A learner of Japanese (around JLPT N2, working toward N1) is reading the book 『${title}』 and wants one sentence explained.\n\nContext before (for understanding only):\n${pre||'(start of chapter)'}\n\nSENTENCE TO EXPLAIN:\n${sent}\n\nContext after (for understanding only):\n${post||'(end of chapter)'}\n\nReply with JSON only, no code fences, in this shape:\n{"paraphrase":"the sentence restated in simpler Japanese, keeping all of its meaning","structure":"1-3 short English sentences on how the sentence is built: the main clause, what each long modifier attaches to, any dropped subject and who it is","grammar":[{"form":"the grammar pattern as it appears, e.g. 〜ざるを得ない","level":"N5-N1","note":"short English note: what it means and what it is doing in this sentence"}],"tricky":"one short English note on anything easy to misread here (omit or leave empty if nothing)"}\nList only grammar worth pointing out at N3 level and above, most important first, at most 5. Explain only this sentence.`;
-  const schema={type:'object',properties:{paraphrase:{type:'string'},structure:{type:'string'},grammar:{type:'array',items:{type:'object',properties:{form:{type:'string'},level:{type:'string'},note:{type:'string'}},required:['form','note']}},tricky:{type:'string'}},required:['paraphrase','structure','grammar']};
-  const p=askClaudeData(ask,schema,2500,NOTE_MODEL).then(r=>{let j=r.data;if(!j){const x=r.text||'',a=x.indexOf('{'),z=x.lastIndexOf('}');try{j=JSON.parse(x.slice(a,z+1));}catch(e){j=looseObjects(x,1)[0];}}if(!j||!(j.paraphrase||j.structure))throw new Error('解説を読み取れませんでした');const box=h('div',{class:'exp'},h('p',{class:'src'},sent));
-    if(j.paraphrase)box.append(h('h4',null,'やさしい言い換え'),h('p',{class:'para'},j.paraphrase));
-    if(j.structure)box.append(h('h4',null,'文の組み立て'),h('p',null,j.structure));
-    const g=(j.grammar||[]).filter(x=>x&&x.form);if(g.length){const ul=h('ul');for(const x of g)ul.append(h('li',null,h('b',null,x.form),x.level?h('em',null,x.level):null,x.note||''));box.append(h('h4',null,'文法'),ul);}
-    if(j.tricky)box.append(h('h4',null,'注意'),h('p',null,j.tricky));return box;});
-  showSheet('解説',`『${title}』`,p);}
-// shown once when a book opens; it goes away on the first page turn, which leaves AI off for this sitting
-function offerAI(){if(!aiKey()||!R.book)return;const el=$('#nudge');if(!el.hidden)return;el.textContent='';el.dataset.kind='offer';R.progAt=Date.now();
-  el.append(h('span',null,'この読書でAIを使いますか'),h('button',{onclick:()=>{R.ai={start:R.g};$('#aiInkRow').hidden=false;el.textContent='';el.append(h('span',{style:'padding-right:12px'},'AIオン　本を閉じるときに要約します'));setTimeout(()=>{if(el.textContent.startsWith('AIオン'))el.hidden=true;},2600);}},'使う'));el.hidden=false;}
+// a handwritten note kept with a highlight: strokes in pad pixels, drawn light on the dark page or dark on white for the AI
+function inkImage(ink,forAI){const c=document.createElement('canvas'),sc=forAI?2:1;c.width=ink.w*sc;c.height=ink.h*sc;const x=c.getContext('2d');if(forAI){x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);}
+  x.scale(sc,sc);x.lineCap=x.lineJoin='round';x.lineWidth=2.4;x.strokeStyle=forAI?'#111':'#dcdad3';for(const st of ink.strokes){x.beginPath();st.forEach((q,i)=>i?x.lineTo(q[0],q[1]):x.moveTo(q[0],q[1]));if(st.length===1)x.lineTo(st[0][0]+.1,st[0][1]);x.stroke();}return c.toDataURL('image/png');}
+// the highlight window: the sentence set large; press or drag across a part of it to ask about just that part.
+// Asking is optional. The answer is shown and kept as a note (with the book's name).
+function hlWindow(q){const book=R.book,ch=R.ch,t=R.text,sent=t.slice(q.s,q.e);let a=-1,b=-1,drag=false,base=null;
+  // the pad under the sentence: Pencil or finger; saved with the highlight when the window closes or the AI is asked
+  const pad=h('canvas',{class:'pad','aria-label':'手書きメモ'}),px=pad.getContext('2d');let ink={w:0,h:0,strokes:[]},cur=null,dirty=false;
+  const redraw=()=>{const dpr=devicePixelRatio||1;px.setTransform(dpr,0,0,dpr,0,0);px.clearRect(0,0,pad.width,pad.height);px.lineCap=px.lineJoin='round';px.lineWidth=2.4;px.strokeStyle='#dcdad3';for(const st of ink.strokes){px.beginPath();st.forEach((p,i)=>i?px.lineTo(p[0],p[1]):px.moveTo(p[0],p[1]));if(st.length===1)px.lineTo(st[0][0]+.1,st[0][1]);px.stroke();}};
+  const fit=()=>{const r=pad.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!r.width)return;if(ink.w&&ink.w!==r.width){const k=r.width/ink.w;ink.strokes=ink.strokes.map(st=>st.map(p=>[p[0]*k,p[1]*k]));}ink.w=r.width;ink.h=r.height;pad.width=r.width*dpr;pad.height=r.height*dpr;redraw();};
+  const pos=e=>{const r=pad.getBoundingClientRect();return [Math.round((e.clientX-r.left)*10)/10,Math.round((e.clientY-r.top)*10)/10];};
+  pad.addEventListener('pointerdown',e=>{e.preventDefault();cur=[pos(e)];ink.strokes.push(cur);dirty=true;try{pad.setPointerCapture(e.pointerId);}catch(x){}redraw();});
+  pad.addEventListener('pointermove',e=>{if(!cur)return;const p=pos(e),l=cur[cur.length-1];if(Math.hypot(p[0]-l[0],p[1]-l[1])<1.2)return;cur.push(p);redraw();});
+  const padEnd=()=>{cur=null;};pad.addEventListener('pointerup',padEnd);pad.addEventListener('pointercancel',padEnd);
+  const saveInk=async()=>{if(!dirty)return;dirty=false;const rec=await DB.get('quotes',q.id);if(!rec)return;if(ink.strokes.length)rec.ink={w:ink.w,h:ink.h,strokes:ink.strokes};else delete rec.ink;await DB.put('quotes',rec);};
+  const close=()=>{saveInk();box.remove();};
+  DB.get('quotes',q.id).then(rec=>{if(rec&&rec.ink){ink=JSON.parse(JSON.stringify(rec.ink));ink.w=rec.ink.w;}requestAnimationFrame(fit);});
+  const sp=[...sent].map((c,i)=>h('span',{'data-i':i},c)),line=h('p',{class:'sent'},...sp),hint=h('p',{class:'hint'}),out=h('div'),ask=h('button',{class:'add'});
+  const word=i=>{const g=q.s+i,W=R.words||[];let lo=0,hi=W.length-1;while(lo<=hi){const m=(lo+hi)>>1,w=W[m];if(g<w.s)hi=m-1;else if(g>=w.e)lo=m+1;else return [Math.max(0,w.s-q.s),Math.min(sent.length,w.e-q.s)-1];}return [i,i];};
+  const paint=()=>{sp.forEach((x,i)=>x.classList.toggle('on',a>=0&&i>=a&&i<=b));const f=a>=0?sent.slice(a,b+1):'';hint.textContent=f?`選んだ部分：${f}`:'気になる部分を押すか、なぞって選べます（選ばなければ文全体）';ask.textContent=f?'この部分をAIに聞く':'文全体をAIに聞く';};
+  const at=e=>{const el=document.elementFromPoint(e.clientX,e.clientY);return el&&el.dataset&&el.dataset.i!=null&&line.contains(el)?+el.dataset.i:-1;};
+  line.addEventListener('pointerdown',e=>{const i=at(e);if(i<0)return;e.preventDefault();const w=word(i);if(a>=0&&w[0]===a&&w[1]===b){a=b=-1;base=null;paint();return;}drag=true;base=w;a=w[0];b=w[1];paint();try{line.setPointerCapture(e.pointerId);}catch(x){}});
+  line.addEventListener('pointermove',e=>{if(!drag)return;const i=at(e);if(i<0)return;const w=word(i);a=Math.min(base[0],w[0]);b=Math.max(base[1],w[1]);paint();});
+  const stop=()=>{drag=false;};line.addEventListener('pointerup',stop);line.addEventListener('pointercancel',stop);
+  ask.onclick=()=>{const focus=a>=0?sent.slice(a,b+1):'',pre=t.slice(Math.max(0,q.s-200),q.s).trim(),post=t.slice(q.e,q.e+120).trim();ask.disabled=true;out.className='out';out.textContent='';out.append(h('p',{class:'wait'},'書いています…'));
+    const hasInk=ink.strokes.length>0;saveInk();
+    const prompt=`A learner of Japanese (around JLPT N2, working toward N1) is reading the book 『${book.title}』 and highlighted one sentence.\n\nContext before (for understanding only):\n${pre||'(start of chapter)'}\n\nSENTENCE:\n${sent}\n\nContext after (for understanding only):\n${post||'(end of chapter)'}\n\n`+
+      (focus?`The learner marked this part of the sentence and wants it clarified: 「${focus}」\nPut most of your effort into "focus": say what the marked part is (a grammar pattern, a word, a set expression, part of a larger construction), what it means and what nuance it adds in this sentence, its JLPT level if it is a grammar pattern, and give one short new example sentence in Japanese that uses it. If the marked text is only a fragment of a larger pattern, name and explain the whole pattern.\n\n`:'')+
+      `Fields:\n- paraphrase: the sentence restated in simpler Japanese, keeping all of its meaning\n- structure: 1-3 short English sentences on how the sentence is built (main clause, what each long modifier attaches to, any dropped subject and who it is)\n- grammar: grammar worth pointing out at N3 level and above, most important first, at most 5; each with form, level (N5-N1) and a short English note on what it is doing here\n- tricky: one short English note on anything easy to misread (empty if nothing)`+(focus?`\n- focus: the clarification of the marked part, in English with the Japanese quoted, 2-5 sentences`:'')+(hasInk?`\n\nThe attached image is the learner's own handwritten note about this sentence.\n- hand: transcribe the handwriting exactly as written (if it is only marks such as an underline or a circle, write 印のみ)\n- reply: respond to the note in 1-4 sentences. If it asks a question, answer it. If it is the learner's reading or guess, say whether it is right. If it contains Japanese with a mistake, give the correction.`:'')+`\nExplain only this sentence.`;
+    const schema={type:'object',properties:{hand:{type:'string'},reply:{type:'string'},focus:{type:'string'},paraphrase:{type:'string'},structure:{type:'string'},grammar:{type:'array',items:{type:'object',properties:{form:{type:'string'},level:{type:'string'},note:{type:'string'}},required:['form','note']}},tricky:{type:'string'}},required:focus?['focus','paraphrase','structure','grammar']:['paraphrase','structure','grammar']};
+    askClaudeData(hasInk?[{type:'image',source:{type:'base64',media_type:'image/png',data:inkImage(ink,true).split(',')[1]}},{type:'text',text:prompt}]:prompt,schema,2800,NOTE_MODEL).then(async r=>{let j=r.data;if(!j){const x=r.text||'',i0=x.indexOf('{'),z=x.lastIndexOf('}');try{j=JSON.parse(x.slice(i0,z+1));}catch(e){j=looseObjects(x,1)[0];}}if(!j||!(j.paraphrase||j.structure||j.focus||j.reply))throw new Error('解説を読み取れませんでした');
+      const g=(j.grammar||[]).filter(x=>x&&x.form),box=h('div',{class:'exp'}),hand=j.hand&&j.hand!=='印のみ'?j.hand:'';
+      if(hasInk&&j.reply)box.append(h('h4',null,hand?`手書き：${hand}`:'手書きメモ'),h('p',null,j.reply));
+      if(j.focus)box.append(h('h4',null,`「${focus}」`),h('p',null,j.focus));
+      if(j.paraphrase)box.append(h('h4',null,'やさしい言い換え'),h('p',{class:'para'},j.paraphrase));
+      if(j.structure)box.append(h('h4',null,'文の組み立て'),h('p',null,j.structure));
+      if(g.length){const ul=h('ul');for(const x of g)ul.append(h('li',null,h('b',null,x.form),x.level?h('em',null,x.level):null,x.note||''));box.append(h('h4',null,'文法'),ul);}
+      if(j.tricky)box.append(h('h4',null,'注意'),h('p',null,j.tricky));
+      const comment=[hasInk&&j.reply?`メモへの返事：${j.reply}`:'',j.focus?`「${focus}」 ${j.focus}`:'',j.paraphrase?`言い換え：${j.paraphrase}`:'',j.structure?`組み立て：${j.structure}`:'',g.length?'文法：'+g.map(x=>`${x.form}${x.level?`（${x.level}）`:''} ${x.note||''}`).join(' / '):'',j.tricky?`注意：${j.tricky}`:''].filter(Boolean).join('\n');
+      await DB.put('notes',{id:'n'+Date.now().toString(36),bookId:book.id,book:book.title,ch,off:q.s,g:R.before[ch]+q.s,hand:hasInk?(j.hand||''):'',sent,focus,comment,kind:'hl',added:Date.now()});
+      out.textContent='';out.append(box,h('p',{class:'hint',style:'margin-top:18px'},'ノートに保存しました（本の上のメニュー →「ノート」）'));ask.disabled=false;ask.textContent='もう一度聞く';
+    }).catch(e=>{out.textContent='';out.append(h('p',{class:'wait'},'AIに届きませんでした：'+(e&&e.message||e)));ask.disabled=false;});};
+  const box=h('div',{class:'picker hlw',role:'dialog','aria-label':'ハイライトした文'},h('div',{class:'top'},h('h2',null,'ハイライト'),h('button',{onclick:close},'閉じる')),
+    h('div',{class:'wrap'},line,aiKey()?hint:h('p',{class:'hint'},'書き抜きに保存しました。設定でClaude APIキーを入れると、ここからAIに解説を聞けます。'),
+      h('div',{class:'padhead'},h('span',null,'手書きメモ（文と一緒に保存されます）'),h('span',null,h('button',{onclick:()=>{if(ink.strokes.pop()){dirty=true;redraw();}}},'戻す'),h('button',{onclick:()=>{if(ink.strokes.length){ink.strokes=[];dirty=true;redraw();}}},'消す'))),pad,
+      aiKey()?h('div',{class:'acts'},ask):null,out));
+  paint();document.body.append(box);}
 function sessionText(fromG,toG){let out='';const b=R.book;
   for(let ch=0;ch<b.chapters.length;ch++){const a=R.before[ch],e=a+b.chapters[ch].chars;if(e<=fromG||a>=toG)continue;const d=document.createElement('div');d.innerHTML=R.content.chapters[ch];const t=plainText(d);out+=t.slice(Math.max(0,fromG-a),Math.min(t.length,toG-a))+'\n';}
   return out.slice(-12000);}
 // AI note: reads the handwriting on this page together with the text around it, and leaves one very short comment in the notes list
-function readInk(){if(!R.ai)return;if(!R.vis.length){toast('このページに手書きはありません');return;}
+function readInk(){if(!aiKey())return;if(!R.vis.length){toast('このページに手書きはありません');return;}
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const o of R.vis)for(const q of o.pts){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);}
   const m=18,sc=2,c=document.createElement('canvas');c.width=Math.ceil((x1-x0+2*m)*sc);c.height=Math.ceil((y1-y0+2*m)*sc);const x=c.getContext('2d');
   x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.setTransform(sc,0,0,sc,(m-x0)*sc,(m-y0)*sc);for(const o of R.vis)paint(x,o.pts,'#111',S.size);
@@ -1259,7 +1312,7 @@ async function openNotes(){const el=$('#notes'),was=el.hidden;closePanels();if(!
   const all=(await DB.all('notes')).filter(n=>n.bookId===R.book.id).sort((p,q)=>p.g-q.g),list=$('#notesList');list.textContent='';
   if(!all.length)list.append(h('p',{class:'nt-empty'},'まだノートはありません。AIを使う読書で、手書きのあるページから「表示」→「AIノートを作る」を押すと、短いコメントがここに残ります。'));
   for(const n of all){let title='';for(let i=n.ch;i>=0&&!title;i--)title=R.book.chapters[i].title;
-    list.append(h('div',{class:'nt'},h('div',{class:'nt-where'},title||`${Math.round(n.g/R.book.total*100)}%`),n.hand&&n.hand!=='印のみ'?h('div',{class:'nt-hand'},n.hand):null,h('div',{class:'nt-ai'},n.comment),
+    list.append(h('div',{class:'nt'},h('div',{class:'nt-where'},title||`${Math.round(n.g/R.book.total*100)}%`),n.sent?h('div',{class:'nt-hand'},n.focus?`${n.sent}　【${n.focus}】`:n.sent):null,n.hand&&n.hand!=='印のみ'?h('div',{class:'nt-hand'},n.hand):null,h('div',{class:'nt-ai'},n.comment),
       h('div',{class:'acts'},h('button',{onclick:()=>{closePanels();setUi(false);loadChapter(n.ch,{off:n.off});}},'この場所へ'),h('button',{onclick:async()=>{await DB.del('notes',n.id);el.hidden=true;openNotes();}},'削除'))));}
   el.hidden=false;}
 
@@ -1441,11 +1494,11 @@ document.addEventListener('selectionchange',()=>{if(!R.native)return;clearTimeou
 function showSel(a,b){clearHl();R.sel={s:a,e:b};markRange(a,b);selEl.textContent='';const t=R.text;
   const copy=async()=>{const txt=t.slice(R.sel.s,R.sel.e).trim();let ok=false;try{await navigator.clipboard.writeText(txt);ok=true;}catch(e){try{const ta=h('textarea',{style:'position:fixed;opacity:0'});ta.value=txt;document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove();}catch(x){}}
     closeSel();toast(ok?'コピーしました':'コピーできませんでした');};
-  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),(()=>{const ex=(R.quotes||[]).filter(q=>q.s<b&&q.e>a);
-    if(ex.length)return h('button',{onclick:async()=>{closeSel();for(const q of ex){await DB.del('quotes',q.id);unmarkHi(q.id);}R.quotes=R.quotes.filter(q=>!ex.includes(q));measure();if(S.scroll)drawInk();toast('ハイライトを消しました');}},'ハイライトを消す');
+  selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),...[].concat((()=>{const ex=(R.quotes||[]).filter(q=>q.s<b&&q.e>a);
+    if(ex.length)return [h('button',{onclick:()=>{const q=ex[0];closeSel();hlWindow(q);}},'解説'),h('button',{onclick:async()=>{closeSel();for(const q of ex){await DB.del('quotes',q.id);unmarkHi(q.id);}R.quotes=R.quotes.filter(q=>!ex.includes(q));holdPlace(measure);toast('ハイライトを消しました');}},'ハイライトを消す')];
     return h('button',{onclick:async()=>{const sl=R.sel,raw=t.slice(sl.s,sl.e),s0=sl.s+(raw.length-raw.trimStart().length),txt=raw.trim(),id='q'+Date.now().toString(36);
       await DB.put('quotes',{id,bookId:R.book.id,book:R.book.title,ch:R.ch,off:s0,e:s0+txt.length,g:R.before[R.ch]+s0,text:txt,added:Date.now()});closeSel();
-      markHi(s0,s0+txt.length,id);(R.quotes=R.quotes||[]).push({id,s:s0,e:s0+txt.length});measure();toast('ハイライトして、書き抜きに保存しました');}},'ハイライト');})(),h('button',{onclick:nativeSel},'翻訳・調べる'),R.ai&&aiKey()?h('button',{onclick:explainSel},'解説'):null,b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
+      markHi(s0,s0+txt.length,id);(R.quotes=R.quotes||[]).push({id,s:s0,e:s0+txt.length});holdPlace(measure);toast('ハイライトして、書き抜きに保存しました',1800);hlWindow({id,s:s0,e:s0+txt.length});}},'ハイライト');})()),h('button',{onclick:nativeSel},'翻訳・調べる'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
   selEl.style.cssText='';selEl.hidden=false;
   // next to the finger: above it when there is room, otherwise below
   if(R.selAt){const w=selEl.offsetWidth,ht=selEl.offsetHeight,x=clamp(R.selAt[0]-w/2,10,innerWidth-w-10);let y=R.selAt[1]-ht-34;if(y<10)y=R.selAt[1]+34;y=clamp(y,10,innerHeight-ht-10);
