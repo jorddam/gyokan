@@ -167,6 +167,22 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .chnav button{border:1px solid color-mix(in srgb,var(--text) 30%,transparent);color:var(--text);border-radius:999px;padding:1em .9em;font-size:.9rem;writing-mode:inherit}
 #viewport.scroll.h .chnav button{padding:.8em 1.4em}
 #ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
+#pplList{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 22px 20px}
+.pp{padding:12px 0;border-bottom:1px solid var(--line)}
+.pp>button.hd{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;flex-wrap:wrap}
+.pp .nm{font-family:var(--mincho);font-size:1.25rem;color:var(--mute)}
+.pp.here .nm{color:var(--ink)}
+.pp.here>button.hd::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);align-self:center}
+.pp .rd2{font-size:.82rem;color:var(--mute)}
+.pp.here .rd2{color:var(--accent)}
+.pp .ct{margin-left:auto;font-size:.72rem;color:var(--mute);font-variant-numeric:tabular-nums}
+.pp .al{font-size:.76rem;color:var(--mute);margin-top:3px}
+.pp .memo{font-size:.84rem;margin-top:4px}
+.pp .more{margin-top:10px}
+.pp .more input{width:100%;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font-size:.9rem}
+.pp .more .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pp .more .acts button{font-size:.78rem;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.ppnote{font-size:.78rem;color:var(--mute);line-height:1.7;margin:4px 0 10px}
 #notesList{overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 22px 20px}
 .nt{padding:14px 0;border-bottom:1px solid var(--line)}
 .nt-where{font-size:.74rem;color:var(--mute)}
@@ -402,6 +418,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <header id="rtop" class="chrome">
     <button id="back">‹ 本棚</button>
     <div id="rtitle"></div>
+    <button id="pplBtn">人物</button>
     <button id="notesBtn">ノート</button>
     <button id="tocBtn">目次</button>
     <button id="aaBtn">表示</button>
@@ -412,6 +429,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   </footer>
   <aside id="toc" class="sheet" hidden><h3>目次</h3><ol id="tocList"></ol></aside>
   <aside id="notes" class="sheet" hidden><h3>ノート</h3><div id="notesList"></div></aside>
+  <aside id="people" class="sheet" hidden><h3>人物</h3><div id="pplList"></div></aside>
   <div id="dict" hidden role="dialog" aria-label="辞書"></div>
   <div id="nudge" hidden></div>
   <div id="selbar" hidden></div>
@@ -554,7 +572,7 @@ async function importEpub(file){
   // the same book again (same title, author and length): leave the shelf as it is
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
-  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;pend.splice(pi,1);LS.set('pending',pend);}
+  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;pend.splice(pi,1);LS.set('pending',pend);}
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
 
@@ -746,7 +764,7 @@ function startStudy(queue){
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),
-    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined})),vocab:await DB.all('vocab'),
+    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined})),vocab:await DB.all('vocab'),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
@@ -756,7 +774,7 @@ async function exportBackup(){const data=JSON.stringify(await makeBackup()),name
 async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
-  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);await DB.put('books',b);nb++;}else pending.push(p);}
+  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
@@ -924,7 +942,7 @@ function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)ret
 async function loadChapter(ch,target){
   if(R.busy)return;R.busy=true;
   try{R.ch=clamp(ch,0,R.book.chapters.length-1);R.ink=null;R.furiDone=false;for(const u of R.urls)URL.revokeObjectURL(u);R.urls=[];
-    flow.style.visibility='hidden';flow.innerHTML=R.content.chapters[R.ch]||'';placeReadMarks();await placeHighlights();
+    flow.style.visibility='hidden';flow.innerHTML=R.content.chapters[R.ch]||'';R.ruby=Object.assign(rubyMap(R.content.chapters[R.ch]),R.ruby||{});placeReadMarks();await placeHighlights();
     await Promise.all([...flow.querySelectorAll('img')].map(im=>{const r=R.content.res[im.dataset.res];if(!r){im.remove();return null;}const u=URL.createObjectURL(new Blob([r.buf],{type:r.type}));R.urls.push(u);im.src=u;return Promise.race([im.decode().catch(()=>{}),new Promise(z=>setTimeout(z,3000))]);}));
     geometry();measure();const fragEl=target&&target.frag?flow.querySelector(`[data-id="${CSS.escape(target.frag)}"]`):null,fragC=fragEl?coords(flow.getBoundingClientRect(),fragEl.getBoundingClientRect())[0]:null;
     if(S.scroll){R.logG=null;let c=0;if(target){if(target.end)c=Math.max(0,R.extent-R.B*.7);else if(fragC!=null)c=fragC;else if(target.off){const x=centerAt(target.off);c=x==null?0:x-R.L/2;}}
@@ -1017,7 +1035,9 @@ async function openBook(id){
   const book=await DB.get('books',id),content=await DB.get('content',id);if(!book||!content){toast('本を開けませんでした');return;}
   $('#study').hidden=true;const plan=LS.get('plan',null);R.item=!S.simple&&plan&&plan.date===todayStr()?plan.items.find(x=>x.id===id)||null:null;$('#nudge').hidden=true;
   $('#notesBtn').hidden=!!S.simple;R.pend=null;R.ai=null;R.erase=false;R.vis=[];$('#aiInkRow').hidden=true;for(const x of document.querySelectorAll('[data-ink-v]'))x.setAttribute('aria-pressed',x.dataset.inkV==='draw');
-  R.book=book;R.content=content;R.before=[];let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
+  R.book=book;R.content=content;R.ruby={};R.nameSet=null;R.before=[];
+  // readings the book gives anywhere (names get furigana once, on first appearance): gathered quietly, earliest chapter first
+  (async()=>{const m={};for(let i=0;i<content.chapters.length;i++){if(R.book!==book)return;const x=rubyMap(content.chapters[i]);for(const k in x)if(!m[k])m[k]=x[k];if(i%4===3)await new Promise(r=>setTimeout(r,30));}if(R.book===book)R.ruby=Object.assign(m,{});})();let acc=0;for(const c of book.chapters){R.before.push(acc);acc+=c.chars;}
   $('#rtitle').textContent=book.title;
   const list=$('#tocList');list.textContent='';
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
@@ -1037,8 +1057,8 @@ function closeBook(){closeDict();$('#nudge').hidden=true;saveNow();if(syncDirty)
 function setUi(on){readerEl.classList.toggle('ui',on);}
 const setFuriButtons=()=>{for(const x of document.querySelectorAll('[data-furi-v]'))x.setAttribute('aria-pressed',(x.dataset.furiV==='book')===(S.furi==='book'));};
 const setFlowButtons=()=>{for(const x of document.querySelectorAll('[data-flow-v]'))x.setAttribute('aria-pressed',(x.dataset.flowV==='scroll')===!!S.scroll);};
-function closePanels(){closeSel();$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;closeDict();}
-const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden;
+function closePanels(){closeSel();$('#toc').hidden=true;$('#aa').hidden=true;$('#notes').hidden=true;$('#people').hidden=true;closeDict();}
+const panelsOpen=()=>!$('#toc').hidden||!$('#aa').hidden||!$('#notes').hidden||!$('#people').hidden;
 
 // touch + pencil: tap edges to turn, tap middle for controls, swipe to turn
 let down=null,pen=null;const stage=$('#stage');
@@ -1101,7 +1121,7 @@ addEventListener('keydown',e=>{if(readerEl.hidden)return;const v=isV();
   else if(e.key==='Escape'){if(dictOpen())closeDict();else if(panelsOpen())closePanels();else if(readerEl.classList.contains('ui'))setUi(false);else closeBook();}else return;e.preventDefault();});
 $('#back').onclick=closeBook;
 $('#tocBtn').onclick=()=>{const t=$('#toc'),was=t.hidden;closePanels();t.hidden=!was;if(was){let cur=null;for(const b of t.querySelectorAll('button')){b.removeAttribute('aria-current');if(+b.dataset.ch<=R.ch)cur=b;}if(cur){cur.setAttribute('aria-current','true');cur.scrollIntoView({block:'center'});}}};
-$('#notesBtn').onclick=()=>openNotes();
+$('#notesBtn').onclick=()=>openNotes();$('#pplBtn').onclick=()=>openPeople();
 $('#aaBtn').onclick=()=>{const a=$('#aa'),was=a.hidden;closePanels();a.hidden=!was;};
 $('#aa').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.ai){closePanels();setUi(false);if(b.dataset.ai==='quiz')runQuiz('sections',R.ch);else sumToday();}
@@ -1380,9 +1400,9 @@ function applyFurigana(place){
   const wordAt=g=>{let lo=0,hi=W.length-1;while(lo<=hi){const mid=(lo+hi)>>1,w=W[mid];if(g<w.s)hi=mid-1;else if(g>=w.e)lo=mid+1;else return w;}return null;};
   for(let q=toks.length-1;q>=0;q--){const [s,e,lem,read]=toks[q],nd=R.nodes[nodeAt(s)];if(!nd)continue;
     const w=wordAt(s),surf=R.text.slice(s,e),known=Known.has(lem)||Known.has(surf)||!!(w&&Known.has(w.key)),rb=nd.n.parentElement.closest('ruby');
-    if(rb){if(known&&!rb.classList.contains('x-furi')&&!rb.classList.contains('x-known')){rb.classList.add('x-known');changed=true;}continue;}
-    if(known||e>nd.off+nd.len||nd.n.parentElement.closest('rt'))continue;
-    const parts=furiParts(surf,read);
+    if(rb)continue; // the book's own furigana is always left showing
+    if((known&&!(R.nameSet&&R.nameSet.has(surf)))||e>nd.off+nd.len||nd.n.parentElement.closest('rt'))continue;
+    const br=R.ruby&&surf.length>=2?R.ruby[surf]:'',parts=br?[[0,surf.length,br]]:furiParts(surf,read); // a reading the book itself gave for this word wins over the dictionary's
     for(let p=parts.length-1;p>=0;p--){const [a,b,r]=parts[p];if(!r||r===hira(surf.slice(a,b)))continue;
       const mid=nd.n.splitText(s-nd.off+a);mid.splitText(b-a);const ruby=document.createElement('ruby');ruby.className='x-furi';mid.replaceWith(ruby);const rt=document.createElement('rt');rt.textContent=r;ruby.append(mid,rt);changed=true;}}
   if(changed){measure();back();}
@@ -1421,6 +1441,76 @@ function rescueVerb(k,a,b){
     const ids=dictFind(k+e);if(ids&&!ids.weak&&isVerb(ids))return {key:k+e,ids};}}
   if(INEXT.includes(a)){const ids=dictFind(k+'る');if(ids&&!ids.weak&&ids.some(i=>dictEntry(i).senses.some(x=>/ichidan/i.test(x.pos))))return {key:k+'る',ids};}
   return null;}
+/* ---------- people: a log of the names in a book, found without AI ----------
+   The word splitter labels people's names; a word followed by さん, 先生 and the like also counts. Family name + given name
+   side by side become one person, and each half then points to that person. Readings come from the book's own furigana first. */
+const HONOR=new Set(['さん','くん','君','ちゃん','様','さま','氏','先生','博士','教授','殿','先輩','刑事','警部','社長','部長','課長','所長','医師']);
+const KATA=/^[ァ-ヶー]{2,}$/;
+function namesFrom(toks,P,base,out){const n=toks.length,isP=t=>t.pos==='名詞'&&t.pos_detail_1==='固有名詞'&&t.pos_detail_2==='人名'&&!NOWORD.test(t.surface_form);
+  for(let i=0;i<n;i++){const t=toks[i];
+    if(isP(t)){let j=i;while(j+1<n&&isP(toks[j+1])&&P[j+1]===P[j]+toks[j].surface_form.length&&j-i<2)j++;
+      const sf=toks.slice(i,j+1).map(x=>x.surface_form).join(''),rd=toks.slice(i,j+1).map(x=>x.reading?hira(x.reading):'').join('');
+      if(sf.length>=2||j>i||(i+1<n&&HONOR.has(toks[i+1].surface_form)))out.push([base+P[i],base+P[j]+toks[j].surface_form.length,sf,rd,j>i?toks.slice(i,j+1).map(x=>[x.surface_form,x.reading?hira(x.reading):'']):null]);
+      i=j;continue;}
+    // not labelled as a name, but written like one and addressed like one: カタカナ or an unknown/proper noun + さん
+    if(i+1<n&&HONOR.has(toks[i+1].surface_form)&&t.pos==='名詞'&&!NOWORD.test(t.surface_form)&&(t.pos_detail_1==='固有名詞'||t.word_type==='UNKNOWN'||KATA.test(t.surface_form))&&t.surface_form.length>=2)
+      out.push([base+P[i],base+P[i]+t.surface_form.length,t.surface_form,t.reading&&t.word_type!=='UNKNOWN'?hira(t.reading):'',null]);}}
+// names in a chapter that is not on screen: the same detection over its plain text, a stretch at a time
+async function scanNames(text){const out=[];let st=0,t0=performance.now();
+  while(st<text.length){let en=Math.min(text.length,st+1500);if(en<text.length){const k=text.lastIndexOf('。',en);if(k>st+200)en=k+1;}const seg=text.slice(st,en);
+    if(seg.trim()){const toks=Dict.tok.tokenize(seg),P=[];let cur=0;for(const t of toks){let s=seg.indexOf(t.surface_form,cur);if(s<0)s=cur;P.push(s);cur=s+t.surface_form.length;}namesFrom(toks,P,st,out);}
+    st=en;if(performance.now()-t0>24){await new Promise(r=>setTimeout(r));t0=performance.now();}}
+  return out;}
+function rubyMap(html){const d=document.createElement('div'),m={};d.innerHTML=html||'';for(const rb of d.querySelectorAll('ruby')){let base='',rt='';for(const c of rb.childNodes){if(c.nodeType===3)base+=c.nodeValue;else if(c.localName==='rt')rt+=c.textContent;else if(c.localName!=='rp')base+=c.textContent;}base=base.trim();rt=hira(rt.trim());if(base&&rt&&!m[base])m[base]=rt;}return m;}
+// a name's reading from the book's furigana: the whole name, or its pieces put together
+function rubyRead(sf,m){if(m[sf])return m[sf];let out='',i=0;while(i<sf.length){let hit=0;for(let l=Math.min(6,sf.length-i);l>=1;l--){const r=m[sf.slice(i,i+l)];if(r){out+=r;i+=l;hit=1;break;}}if(!hit)return '';}return out;}
+// a second clue, also without AI: novels print furigana on a name's first appearance. A furigana'd kanji word the dictionary
+// does not know is very likely a name, and two furigana'd words side by side (真賀田 + 四季) a full name.
+function rubyNames(html){const d=document.createElement('div'),out=[];d.innerHTML=html||'';const rbs=[...d.querySelectorAll('ruby')],base=rb=>{let b='';for(const c of rb.childNodes){if(c.nodeType===3)b+=c.nodeValue;else if(c.localName!=='rt'&&c.localName!=='rp')b+=c.textContent;}return b.trim();};
+  const kj=w=>w.length>=1&&w.length<=4&&[...w].every(c=>KANJI.test(c)),unk=w=>kj(w)&&w.length>=2&&!dictFind(w);
+  for(let i=0;i<rbs.length;i++){const a=base(rbs[i]),nx=rbs[i+1],b=nx&&rbs[i].nextSibling===nx?base(nx):'';
+    if(b&&kj(a)&&kj(b)&&(unk(a)||unk(b))&&a.length+b.length<=7){out.push([a+b,[a,b]]);i++;}else if(unk(a))out.push([a,null]);}
+  return out;}
+const countIn=(t,w,end)=>{let n=0,first=-1,i=t.indexOf(w);while(i>=0&&i<end){if(first<0)first=i;n++;i=t.indexOf(w,i+w.length);}return [n,first];};
+// per chapter: {names:{surface:[count,firstOffset,reading]}, pairs:[[part,full]], ruby:{}}; kept so earlier chapters are only read once
+async function chapterPeople(ch){const b=R.book,key='ppl2:'+b.id,rec=(await DB.get('kv',key))||{id:key,v:1,ch:{}};if(rec.ch[ch])return rec.ch[ch];
+  await dictStart();if(Dict.state!=='ready')return {names:{},pairs:[],ruby:{},rn:[]};const list=ch===R.ch&&R.words&&R.words.names?R.words.names:await scanNames(chapterText(ch));
+  const names={},pairs=[];for(const [s0,e0,sf,rd,parts] of list){const x=names[sf]||(names[sf]=[0,s0,rd]);x[0]++;if(parts)for(const [p,pr] of parts)if(!pairs.some(q=>q[0]===p&&q[1]===sf))pairs.push([p,sf,pr]);}
+  const rn=rubyNames(R.content.chapters[ch]);for(const [full,parts] of rn)if(parts)for(const p of parts)if(!pairs.some(q=>q[0]===p&&q[1]===full))pairs.push([p,full]);
+  const out={names,pairs,ruby:rubyMap(R.content.chapters[ch]),rn:rn.flatMap(x=>x[1]?[x[0],...x[1]]:[x[0]])};if(R.book&&R.book.id===b.id){const again=(await DB.get('kv',key))||rec;again.ch[ch]=out;await DB.put('kv',again);}return out;}
+async function gatherPeople(){const b=R.book,ch0=R.ch,end=viewEndOff(),pp=b.people||{},P={},pairs=[],ruby={},C=[],auto=new Set();
+  for(let ch=0;ch<=ch0;ch++){const c=await chapterPeople(ch);if(!R.book||R.book.id!==b.id)return null;C.push(c);}
+  for(let ch=0;ch<=ch0;ch++){const c=C[ch];for(const k in c.ruby)if(!ruby[k])ruby[k]=c.ruby[k];for(const q of c.pairs)pairs.push(q);for(const w of c.rn||[])auto.add(w);const extra=[...new Set([...(pp.add||[]),...auto])];
+    const live=ch===ch0&&R.words&&R.words.names;
+    if(live){for(const [s0,e0,sf,rd] of R.words.names){if(s0>=end)break;const x=P[sf]||(P[sf]={n:0,ch,off:s0,rd,tok:true});x.n++;}}
+    else for(const sf in c.names){const [n,off,rd]=c.names[sf];if(ch===ch0&&off>=end)continue;const x=P[sf]||(P[sf]={n:0,ch,off,rd,tok:true});x.n+=n;}
+    if(extra.length){const t=chapterText(ch),lim=ch===ch0?end:t.length;for(const w of extra){const [n,first]=countIn(t,w,lim);if(n){const x=P[w]||(P[w]={n:0,ch,off:first,rd:'',manual:true});if(x.manual||!c.names[w])x.n+=n;}}}}
+  for(const w of pp.del||[])delete P[w];
+  // who points to whom: your own merges first, then family+given pairs found in the text (a half only joins a full name that is itself listed, and only if it has one such owner)
+  const to={};for(const a in pp.same||{})if(P[a]&&P[pp.same[a]])to[a]=pp.same[a];
+  const owners={};for(const [p,full] of pairs)if(P[p]&&P[full]&&p!==full)(owners[p]=owners[p]||new Set()).add(full);
+  for(const p in owners)if(!to[p]&&owners[p].size===1&&!(pp.split||[]).includes(p))to[p]=[...owners[p]][0];
+  const root=w=>{let k=0;while(to[w]&&k++<5)w=to[w];return w;},E={},partsOf={},partRd={};for(const [p,full,pr] of pairs){if(pr&&!partRd[p])partRd[p]=pr;if(full.includes(p)&&!(partsOf[full]=partsOf[full]||[]).includes(p))partsOf[full].push(p);}
+  // a full name is read piece by piece: the book's furigana for each piece where it has one, the dictionary's guess otherwise
+  const readOf=w=>{const whole=rubyRead(w,ruby);if(whole)return whole;const ps=(partsOf[w]||[]).slice().sort((x,y)=>w.indexOf(x)-w.indexOf(y));if(ps.length>1&&ps.join('')===w){const r=ps.map(x=>rubyRead(x,ruby)||(P[x]&&P[x].rd)||partRd[x]||'');if(r.every(Boolean))return r.join('');}return (P[w]&&P[w].rd)||'';};
+  for(const w in P){const r=root(w),e=E[r]||(E[r]={name:r,al:[],n:0,ch:P[r].ch,off:P[r].off});if(w!==r)e.al.push(w);e.n+=P[w].n;if(P[w].tok)e.tok=true;if(P[w].ch<e.ch||(P[w].ch===e.ch&&P[w].off<e.off)){e.ch=P[w].ch;e.off=P[w].off;}}
+  const from=pageOffset(R.page),win=R.text.slice(from,end),list=[];
+  for(const r in E){const e=E[r];if(!e.tok&&e.n<2&&!(pp.add||[]).includes(r)&&!e.al.length)continue; // a furigana-only guess seen once is usually a false alarm
+    e.rd=readOf(r);e.alr=e.al.map(a=>[a,readOf(a)]);e.here=[r,...e.al].some(w=>win.includes(w));e.memo=(pp.memo||{})[r]||'';list.push(e);}
+  list.sort((x,y)=>(y.here-x.here)||(y.n-x.n));R.nameSet=new Set(Object.keys(P));return list;}
+async function savePeople(fn){const b=R.book;b.people=b.people||{};fn(b.people);await DB.put('books',b);}
+async function openPeople(keep){const el=$('#people'),was=el.hidden;if(!keep){closePanels();if(!was||!R.book)return;}const list=$('#pplList');if(!keep){list.textContent='';list.append(h('p',{class:'ppnote'},'名前を集めています…'));el.hidden=false;}
+  const all=await gatherPeople();if(!all||el.hidden)return;list.textContent='';let merging=null;
+  list.append(h('p',{class:'ppnote'},all.length?'ここまでに出てきた人物です。いまのページに名前がある人が上に来ます。':'まだ人物が見つかっていません。本文で名前を押して「人物に入れる」を選ぶと、ここに加わります。'));
+  for(const e of all){const row=h('div',{class:'pp'+(e.here?' here':'')}),more=h('div',{class:'more',hidden:''}),memo=h('input',{type:'text',placeholder:'メモ（だれ？）',value:e.memo,'aria-label':`${e.name}のメモ`});
+    memo.onchange=()=>savePeople(p=>{p.memo=p.memo||{};if(memo.value.trim())p.memo[e.name]=memo.value.trim();else delete p.memo[e.name];}).then(()=>openPeople(true));
+    const hd=h('button',{class:'hd',onclick:()=>{if(merging&&merging!==e.name){const a=merging;merging=null;savePeople(p=>{p.same=p.same||{};p.same[a]=e.name;for(const k in p.same)if(p.same[k]===a)p.same[k]=e.name;}).then(()=>{toast(`「${a}」を「${e.name}」にまとめました`);openPeople(true);});return;}more.hidden=!more.hidden;}},
+      h('span',{class:'nm'},e.name),e.rd?h('span',{class:'rd2'},e.rd):null,h('span',{class:'ct'},`${e.n}回`));
+    more.append(memo,h('div',{class:'acts'},h('button',{onclick:()=>{closePanels();setUi(false);if(e.ch===R.ch)goOff(e.off);else loadChapter(e.ch,{off:e.off});}},'最初の登場へ'),
+      h('button',{onclick:()=>{merging=e.name;toast(`「${e.name}」と同じ人物を押してください`,3200);}},'別の名前とまとめる'),
+      e.al.length?h('button',{onclick:()=>savePeople(p=>{p.split=[...new Set([...(p.split||[]),...e.al])];for(const a of e.al)if(p.same)delete p.same[a];}).then(()=>openPeople(true))},'まとめを解く'):null,
+      h('button',{onclick:()=>savePeople(p=>{p.del=[...new Set([...(p.del||[]),e.name,...e.al])];p.add=(p.add||[]).filter(w=>w!==e.name&&!e.al.includes(w));}).then(()=>openPeople(true))},'人物から外す')));
+    row.append(...[hd,e.alr.length?h('div',{class:'al'},e.alr.map(([a,r])=>r?`${a}（${r}）`:a).join('　')):null,e.memo?h('div',{class:'memo'},e.memo):null,more].filter(Boolean));list.append(row);}}
 // group tokens into dictionary words: longest JMdict match from each token, then attach trailing auxiliaries
 function groupTokens(toks,seg,base,out){
   const n=toks.length,P=[];let cur=0;
@@ -1457,6 +1547,7 @@ function groupTokens(toks,seg,base,out){
     if(best&&best.j>i){w.parts=[];for(let q=i;q<=best.j;q++)w.parts.push([base+P[q],base+P[q]+toks[q].surface_form.length,lemma(toks[q]),toks[q].surface_form]);}
     out.push(w);i=j+1;}
   // kanji-bearing tokens with their readings, for furigana
+  namesFrom(toks,P,base,out.names||(out.names=[]));
   const tk=out.toks||(out.toks=[]);for(let q=0;q<n;q++){const t=toks[q];if(t.reading&&KANJI.test(t.surface_form))tk.push([base+P[q],base+P[q]+t.surface_form.length,lemma(t),t.surface_form==='行っ'&&!t.okonau?'いっ':hira(t.reading)]);}
 }
 async function indexChapter(){
@@ -1465,7 +1556,7 @@ async function indexChapter(){
   for(const end of bounds){if(end<=st)continue;const seg=text.slice(st,end);
     if(seg.trim())groupTokens(Dict.tok.tokenize(seg),seg,st,words);st=end;
     if(performance.now()-t0>24){await new Promise(r=>setTimeout(r));if(readerEl.hidden||R.text!==text)return;t0=performance.now();}}
-  if(R.text===text){R.words=words;applyFurigana();}
+  if(R.text===text){R.words=words;R.nameSet=new Set([...(words.names||[]).map(x=>x[2]),...((R.book.people||{}).add||[])]);for(const w of (R.book.people||{}).del||[])R.nameSet.delete(w);applyFurigana();}
 }
 function charRect(g){const i=nodeAt(g),nd=R.nodes[i];if(!nd)return null;const m=g-nd.off;if(m<0||m>=nd.len)return null;rg.setStart(nd.n,m);rg.setEnd(nd.n,m+1);const r=rg.getBoundingClientRect();return r.width<1||r.height<1?null:r;}
 // which character is under the finger: find the line, then search along it (taps on furigana land on the word beside them)
@@ -1540,6 +1631,12 @@ function kanjiNode(word){if(!Dict.kanji)return null;const box=h('div',{class:'d-
     box.append(h('div',{class:'kj'},h('b',null,ch),h('div',{class:'m'},f[6]||''),h('div',{class:'rd'},f[4]?h('span',null,h('i',null,'音'),f[4]+'　'):null,f[5]?h('span',null,h('i',null,'訓'),f[5]):null),h('div',{class:'x'},extra)));
     if(box.children.length>=4)break;}
   return box.children.length?box:null;}
+// in the popup: put the pressed word, or the whole run of kanji / katakana around it, into the people log (or take it out)
+function personButtons(g,surface){if(!R.book)return null;const t=R.text,cls=c=>KANJI.test(c)?1:/[ァ-ヶー]/.test(c)?2:0,k=cls(t[g]);let a=g,b=g+1;if(k){while(a>0&&g-a<7&&cls(t[a-1])===k)a--;while(b<t.length&&b-g<8&&cls(t[b])===k)b++;}
+  const run=k?t.slice(a,b):'',pp=R.book.people||{},isP=w=>(pp.add||[]).includes(w)||(!(pp.del||[]).includes(w)&&R.nameSet&&R.nameSet.has(w)),cands=[...new Set([surface,run])].filter(w=>w&&w.length>=2&&w.length<=10&&!NOWORD.test(w)&&/[一-鿿々ァ-ヶ]/.test(w));if(!cands.length)return null;
+  const box=h('div',{class:'d-acts'});for(const w of cands){const on=isP(w);box.append(h('button',{class:'d-save','aria-pressed':String(on),onclick:async()=>{await savePeople(p=>{if(on){p.add=(p.add||[]).filter(x=>x!==w);p.del=[...new Set([...(p.del||[]),w])];}else{p.del=(p.del||[]).filter(x=>x!==w);p.add=[...new Set([...(p.add||[]),w])];}});
+    if(R.nameSet){if(on)R.nameSet.delete(w);else R.nameSet.add(w);}closeDict();toast(on?`「${w}」を人物から外しました`:`「${w}」を人物に入れました`);}},on?`「${w}」を人物から外す`:`「${w}」を人物に入れる`));}
+  return box;}
 function lookupAt(g){
   const ch=R.text[g];if(!ch||NOWORD.test(ch))return false;
   if(Dict.state==='error'){if(!Dict.told){Dict.told=true;toast('辞書ファイル（jmdict.bin・kuromoji.bin・kuromoji.js）が見つからないため、辞書は使えません',5200);}return false;}
@@ -1554,8 +1651,9 @@ function lookupAt(g){
   if(res.ids){if(surface!==res.key)kids.push(h('div',{class:'d-from'},surface));for(const i of res.ids.slice(0,4))kids.push(entryNode(i,res.key,{s:res.s,e:res.e}));
     if(part&&part.key!==res.key){kids.push(h('div',{class:'d-part'},'この部分'));kids.push(entryNode(part.ids[0],part.key,{s:res.s,e:res.e}));}
     const vo=verbOf(res.key);if(vo&&!res.ids.includes(vo.ids[0])&&!(part&&part.key===vo.key)){kids.push(h('div',{class:'d-part'},'動詞')); kids.push(entryNode(vo.ids[0],vo.key,{s:res.s,e:res.e}));}
+    const pb=personButtons(g,surface);if(pb)kids.push(pb);
     const kn=kanjiNode(res.key);if(kn)kids.push(kn);}
-  else{kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));const kn=kanjiNode(surface);if(kn)kids.push(kn);}
+  else{const pb=personButtons(g,surface);if(pb)kids.push(pb);kids.push(h('div',{class:'d-note'},`「${surface}」は辞書に見つかりませんでした。`));const kn=kanjiNode(surface);if(kn)kids.push(kn);}
   showDict(res.s,res.e,kids);dictEl.dataset.g=g;return true;
 }
 function showDict(s,e,kids){
