@@ -198,11 +198,6 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 #sheet .from{color:var(--mute);font-size:.82rem;margin-bottom:16px}
 #sheet .body{font-family:var(--mincho);font-size:1.12rem;line-height:2;white-space:pre-wrap}
 #sheet .foot{display:flex;justify-content:flex-end;margin-top:18px}
-#sheet .pts{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);font-family:var(--gothic);white-space:normal;line-height:1.6}
-#sheet .pts .cap{color:var(--mute);font-size:.78rem;margin-bottom:10px}
-#sheet .pts ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
-#sheet .pts b{display:block;font-size:.95rem;font-weight:600}
-#sheet .pts small{display:block;color:var(--mute);font-size:.76rem}
 .set input[type=text],.set input[type=password]{font:inherit;font-size:.86rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:13em}
 .goals{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0 0 24px}
 .goals .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem;color:var(--mute)}
@@ -802,7 +797,6 @@ function startStudy(queue){
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),
     folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined})),vocab:await DB.all('vocab'),
-    summaries:await loadSums(),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
@@ -817,7 +811,6 @@ async function restoreBackup(data){
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
-  if(Array.isArray(data.summaries))await mergeSums(data.summaries);
   if(Array.isArray(data.known)){Known.clear();for(const w of data.known)Known.add(w);await saveKnown();}
   if(data.home!=null)LS.set('homeFolder',data.home);
   if(data.quizlog){const ql=LS.get('quizlog',{});for(const k in data.quizlog)if(!ql[k]||data.quizlog[k][1]>ql[k][1])ql[k]=data.quizlog[k];LS.set('quizlog',ql);}
@@ -1299,71 +1292,9 @@ function quizCount(ch,s,e,on,chapterEnd){const el=$('#nudge');if(el.dataset.kind
 // what a quiz covers: everything marked 読んだ today in this book since the last quiz; if there is nothing new, all of today's reading
 function todaySegs(fresh){const b=R.book,t=todayStr(),since=b.quizAt||0,all=[];for(const ch in b.read||{})for(const e in b.read[ch]){const m=b.read[ch][e];if(m[0]===t)all.push({ch:+ch,s:+e-m[1],e:+e,ts:m[2]||0});}
   const nw=all.filter(x=>x.ts>since);return fresh&&nw.length?nw:all;}
-/* 今日の要約 keeps what it finds. For a book of ideas (not a story) the same single request also returns the main points of
-   what was read, and they are saved with the summary: `summaries` in the sync file, which the hub's 地図 draws
-   (jphub/notebook/map.html; the shape is described at the top of jphub/lib/points.js). Nothing is sent that was not sent before.
-   A second 要約 on the same day adds the points of what was read since. Points already saved are left as they are, so a
-   correction made to one on the map still holds. */
-const SUM_FIELDS=['歴史','社会','政治・国際','経済・ビジネス','科学','技術','心・脳','思想・哲学','言語','文化・芸術','暮らし・健康','その他']; // the map's fixed fields
-const SUM_KINDS=['事実','主張','概念','事例'];
-const SUM_ASK='次の文章は、読者が今日読んだ日本語の本の一部です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n';
-const sumSchema=multi=>({type:'object',properties:{summary:{type:'string'},points:{type:'array',items:{type:'object',properties:Object.assign({head:{type:'string'},text:{type:'string'},field:{type:'string',enum:SUM_FIELDS},topic:{type:'string'},kind:{type:'string',enum:SUM_KINDS},keys:{type:'array',items:{type:'string'}}},multi?{ch:{type:'integer'}}:{}),required:['head','text','field','topic','kind','keys']}}},required:['summary','points']});
-// saved summaries are one record in kv (no new store, so the database version stays as it is)
-const loadSums=async()=>{const r=await DB.get('kv','summaries');return r&&Array.isArray(r.list)?r.list:[];};
-const saveSums=list=>DB.put('kv',{id:'summaries',list});
-// from another device or a backup: a summary this device doesn't have is added; one it has is replaced only by a newer copy
-async function mergeSums(inc){const list=await loadSums(),at=new Map(list.map((s,i)=>[s&&s.id,i]));let changed=false;
-  for(const s of inc){if(!s||typeof s!=='object'||!s.id||!Array.isArray(s.points))continue;const i=at.get(s.id);
-    if(i==null){at.set(s.id,list.push(s)-1);changed=true;}else if((s.added||0)>(list[i].added||0)){list[i]=s;changed=true;}}
-  if(changed)await saveSums(list);}
-// the reply as {summary, points}, whichever way it arrived; a reply cut short still yields the points that were finished
-function parseSum(r){let d=r.data&&typeof r.data==='object'?r.data:null;
-  if(!d){const t=String(r.text||'').trim();try{d=JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));}catch(e){}
-    if(!d||typeof d!=='object'){let s='';const m=/"summary"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(t);if(m){try{s=JSON.parse(m[1]);}catch(e){}}else if(t[0]!=='{')s=t;d={summary:s,points:looseObjects(t,2)};}}
-  const str=(v,n)=>String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);
-  return {summary:typeof d.summary==='string'?d.summary.trim():'',points:(Array.isArray(d.points)?d.points:[]).filter(p=>p&&typeof p==='object').map(p=>({head:str(p.head,60),text:str(p.text,400),field:str(p.field,20),topic:str(p.topic,40),kind:str(p.kind,10),
-    keys:(Array.isArray(p.keys)?p.keys:[]).map(k=>str(k,30)).filter(Boolean).slice(0,4),ch:p.ch})).filter(p=>p.head||p.text).slice(0,8)};}
-function sumView(summary,points,added,saved){const box=h('div',null,h('div',null,summary||'（要約は返ってきませんでした）'));
-  if(points&&points.length)box.append(h('div',{class:'pts'},h('div',{class:'cap'},saved===false?'要点を保存できませんでした':added&&added<points.length?`今日の要点 ${points.length}件（新しく${added}件）`:added?`今日の要点 ${points.length}件　ノートの地図に入ります`:`今日の要点 ${points.length}件`),
-    h('ul',null,...points.map(p=>h('li',null,h('b',null,p.head||p.text),h('small',null,[p.field,p.topic].filter(Boolean).join(' › ')))))));
-  return box;}
-function sumToday(){if(!aiKey()||!R.book)return;const book=R.book,segs=todaySegs(false).sort((x,y)=>x.ch-y.ch||x.s-y.s);if(!segs.length){toast('今日「読んだ」を押した部分がまだありません',3200);return;}
-  const chTitle=ch=>{let t='';for(let i=ch;i>=0&&!t;i--)t=(book.chapters[i]&&book.chapters[i].title)||'';return t;};
-  // the last 14,000 characters of today's reading, in reading order
-  let left=14000;const parts=[];for(let i=segs.length-1;i>=0&&left>0;i--){const g=segs[i];let t=chapterText(g.ch).slice(g.s,g.e).trim();if(t.length>left)t=t.slice(-left);left-=t.length;if(t)parts.unshift({ch:g.ch,ts:g.ts,t});}
-  const last=segs[segs.length-1],end=(R.before[last.ch]||0)+last.e,sig={title:book.title,author:book.author,total:book.total},day=todayStr();
-  showSheet('今日の要約',`『${book.title}』`,(async()=>{
-    const sums=await loadSums(),old=sums.find(s=>s&&s.day===day&&s.sig&&sameBook(s.sig,sig)),since=old?old.added||0:0;
-    // what was read since the last 要約 today is where new points come from; the rest is there for the summary
-    const runs=[];for(const p of parts){const fresh=!old||p.ts>since,q=runs[runs.length-1];if(q&&q.ch===p.ch&&q.fresh===fresh)q.t+='\n'+p.t;else runs.push({ch:p.ch,fresh,t:p.t});}
-    const chs=[...new Set(runs.filter(x=>x.fresh).map(x=>x.ch))],multi=chs.length>1,mixed=runs.some(x=>!x.fresh);
-    if(!chs.length)return sumView(await askClaude(SUM_ASK+runs.map(x=>x.t).join('\n')),old.points||[]); // nothing new to take points from: the summary alone
-    const seen=new Set(),topics=[];for(let i=sums.length-1;i>=0&&topics.length<60;i--)for(const p of (sums[i]&&sums[i].points)||[]){const k=`${p.field}／${p.topic}`;if(p.topic&&!seen.has(k)){seen.add(k);topics.push(k);}}
-    const label=x=>(mixed?(x.fresh?'【新しく読んだ部分（ここから要点を取る）':'【前に要約した部分（要点は取らない）'):'【本文')+(multi&&x.fresh?`　ch ${x.ch}`:'')+'】';
-    const body=mixed||multi?runs.map(x=>label(x)+'\n'+x.t).join('\n\n'):runs.map(x=>x.t).join('\n');
-    const ask=`次の文章は、読者が今日読んだ日本語の本『${book.title}』の一部です。次の二つを作ってください。
-
-■ summary
-${mixed?'「前に要約した部分」と「新しく読んだ部分」を合わせた、今日読んだ範囲全体':'この範囲'}の内容だけを、自然な日本語で3〜4文に要約します。前置きや見出しは付けません。
-
-■ points
-${mixed?'「新しく読んだ部分」':'この範囲'}から、あとで見返して知識として役に立つ要点を3〜6個選びます。
-・この本が物語（小説など）で、知識として残す要点がないときは、points を空の配列にします。
-・head：要点を一行で（20字くらい）。
-・text：要点を1〜2文で。本文に書かれていることだけを書き、推測は加えません。
-・field：分野。次のどれか一つ：${SUM_FIELDS.join('／')}
-・topic：その分野の中の主題を短い名詞で（例：行動経済学）。下の「すでにある主題」に合うものがあれば、その名前をそのまま使います。
-・kind：${SUM_KINDS.join('／')} のどれか。
-・keys：要点に出てくる用語や人名を1〜4個。同じものを指す語は、いつも同じ書き方にします。${multi?'\n・ch：その要点が書かれている部分の番号（見出しの「ch」の数字）。':''}
-${topics.length?'\nすでにある主題（分野／主題）：\n'+topics.join('\n')+'\n':''}
-${body}`;
-    const d=parseSum(await askClaudeData(ask,sumSchema(multi),2600));if(!d.summary&&!d.points.length)throw new Error('返事を読み取れませんでした');
-    if(!d.points.length)return sumView(d.summary,old?old.points||[]:[]); // a story, or nothing worth keeping: nothing is saved
-    const now=Date.now(),id=old?old.id:'s'+now.toString(36)+Math.random().toString(36).slice(2,7),lastCh=chs[chs.length-1];
-    const pts=d.points.map((p,i)=>{const ch=Number.isInteger(p.ch)&&chs.includes(p.ch)?p.ch:lastCh;return {id:`${id}:${now.toString(36)}:${i}`,head:p.head,text:p.text,field:p.field,topic:p.topic,kind:p.kind,keys:p.keys,ch,chapter:chTitle(ch),added:now};});
-    const rec={id,book:book.title,sig,day,ch:last.ch,chapter:chTitle(last.ch),g:end,added:now,text:d.summary||(old&&old.text)||'',points:(old?old.points||[]:[]).concat(pts)};
-    let saved=true;try{const cur=await loadSums(),i=cur.findIndex(s=>s&&s.id===id);if(i>=0)cur[i]=rec;else cur.push(rec);await saveSums(cur);}catch(e){saved=false;}
-    return sumView(d.summary,rec.points,pts.length,saved);})());}
+function sumToday(){if(!aiKey()||!R.book)return;const segs=todaySegs(false).sort((x,y)=>x.ch-y.ch||x.s-y.s);if(!segs.length){toast('今日「読んだ」を押した部分がまだありません',3200);return;}
+  const text=segs.map(g=>chapterText(g.ch).slice(g.s,g.e).trim()).join('\n').slice(-14000);
+  showSheet('今日の要約',`『${R.book.title}』`,askClaude('次の文章は、読者が今日読んだ日本語の本の一部です。この範囲の内容だけを、自然な日本語で3〜4文に要約してください。前置きや見出しは付けず、要約だけを書いてください。\n\n'+text));}
 function quizPrompt(kind,ch,segs){const b=R.book;
   if(kind==='chapter'){let t=chapterText(ch).trim();const cut=t.length>40000;if(cut)t=t.slice(0,40000);
     return {n:5,ask:`次は日本語の本『${b.title}』の一章です。日本語を学ぶ上級者（N1を目指す読者）がこの章を理解できたか確かめる、四択の問題を5問作ってください。
@@ -1825,16 +1756,16 @@ var Phys=(()=>{
   const P=S.phys=Object.assign({},DEF,S.phys||{});
   const FEATS=[['grain','紙の目（文字と一緒に動く）'],['ink','インクのむら'],['bleed','インクのにじみ'],['ghost','裏写り'],['spots','しみ・繊維・折れ'],['lamp','灯り（紙だけが動く）'],['tilt','傾けると灯りが動く'],['edges','小口（読んだ厚み）'],['turn','ページをめくる影'],['sound','紙の音'],['wear','読んだ所の手ずれ'],['pencil','鉛筆とマーカーの質感'],['photo','自分の紙の写真を使う']];
   const STOCKS=[
-    {id:'sumi',name:'墨',dark:1,base:[21,23,22],ink:'#cdc9bd',mott:.035,speck:.05,fib:70,fibc:[255,255,255],fa:.05},
-    {id:'tan',name:'炭',dark:1,base:[28,25,22],ink:'#d8cfba',mott:.055,speck:.065,fib:170,fibc:[255,236,200],fa:.06},
-    {id:'ai',name:'藍',dark:1,base:[17,22,31],ink:'#c8d0dc',mott:.045,speck:.045,fib:100,fibc:[190,210,255],fa:.06},
-    {id:'kogecha',name:'焦茶',dark:1,base:[31,24,18],ink:'#dccba8',mott:.06,speck:.055,fib:130,fibc:[255,220,170],fa:.06},
-    {id:'kurowashi',name:'黒和紙',dark:1,base:[19,19,21],ink:'#d3d0c8',mott:.03,speck:.035,fib:280,fibc:[255,255,255],fa:.06,long:1},
+    {id:'sumi',name:'墨',dark:1,base:[24,23,21],ink:'#cdc9bd',mott:.035,speck:.05,fib:45,fibc:[255,244,226],fa:.028},
+    {id:'tan',name:'炭',dark:1,base:[29,25,21],ink:'#d8cfba',mott:.055,speck:.065,fib:85,fibc:[255,236,200],fa:.032},
+    {id:'ai',name:'藍',dark:1,base:[20,22,28],ink:'#cbd0d8',mott:.045,speck:.045,fib:60,fibc:[214,220,240],fa:.03},
+    {id:'kogecha',name:'焦茶',dark:1,base:[31,24,18],ink:'#dccba8',mott:.06,speck:.055,fib:75,fibc:[255,220,170],fa:.032},
+    {id:'kurowashi',name:'黒和紙',dark:1,base:[23,21,19],ink:'#d3d0c8',mott:.03,speck:.035,fib:150,fibc:[255,244,226],fa:.036,long:1},
     {id:'bunko',name:'文庫',dark:0,base:[238,229,206],ink:'#2a231a',mott:.03,speck:.035,fib:120,fibc:[120,90,50],fa:.08},
-    {id:'zara',name:'更紙',dark:0,base:[216,213,203],ink:'#2a2a28',mott:.045,speck:.07,fib:260,fibc:[60,60,55],fa:.1},
+    {id:'zara',name:'更紙',dark:0,base:[219,213,200],ink:'#2a2a28',mott:.045,speck:.07,fib:260,fibc:[60,60,55],fa:.1},
     {id:'washi',name:'和紙',dark:0,base:[241,238,228],ink:'#26221c',mott:.025,speck:.025,fib:460,fibc:[150,130,100],fa:.13,long:1},
     {id:'kosho',name:'古書',dark:0,base:[226,209,168],ink:'#3a2c18',mott:.06,speck:.045,fib:140,fibc:[110,70,30],fa:.1},
-    {id:'joshitsu',name:'上質',dark:0,base:[243,241,235],ink:'#1e1e1c',mott:.015,speck:.02,fib:40,fibc:[100,100,100],fa:.05}];
+    {id:'joshitsu',name:'上質',dark:0,base:[244,240,231],ink:'#1e1e1c',mott:.015,speck:.02,fib:40,fibc:[100,100,100],fa:.05}];
   const TS=512,IS=640,mod=(a,n)=>((a%n)+n)%n;
   const rng=s=>{let a=s>>>0;return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};};
   const cv=(w,hh)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(hh));return c;};
@@ -1897,8 +1828,8 @@ var Phys=(()=>{
     return c;}
   /* --- uneven inking: soft patches of bare paper laid over the text, so the print thins there --- */
   function makeInk(bs,sd){const N=320,c=cv(N,N),x=c.getContext('2d'),r=rng(sd^0x51ed27);
-    for(let k=0;k<15;k++){const px=r()*N,py=r()*N,rad=16+r()*58,a=.1+r()*.27;for(const ox of [-N,0,N])for(const oy of [-N,0,N]){const g=x.createRadialGradient(px+ox,py+oy,0,px+ox,py+oy,rad);g.addColorStop(0,rgba(bs,a));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(px+ox-rad,py+oy-rad,2*rad,2*rad);}}
-    for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.07+r()*.08));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
+    for(let k=0;k<15;k++){const px=r()*N,py=r()*N,rad=18+r()*60,a=.055+r()*.15;for(const ox of [-N,0,N])for(const oy of [-N,0,N]){const g=x.createRadialGradient(px+ox,py+oy,0,px+ox,py+oy,rad);g.addColorStop(0,rgba(bs,a));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(px+ox-rad,py+oy-rad,2*rad,2*rad);}}
+    for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.035+r()*.045));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
     return c.toDataURL();}
   function paper(){const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
     inkv.style.backgroundImage=`url(${makeInk(base,seed)})`;
@@ -1909,7 +1840,7 @@ var Phys=(()=>{
     const n=Math.min(60,Math.round(ext/2400)),r=rng(seed^Math.imul(R.ch+1,7919)),fox=isDark()?[205,175,125]:[150,100,40],dk=isDark()?.5:1;
     for(let i=0;i<n;i++){const p=r()*ext,q=r()*cross,t=r(),el=h('i');let w,hh,st='';
       if(t<.5){w=hh=4+r()*15;st=`border-radius:50%;background:radial-gradient(closest-side,${rgba(fox,(.12+r()*.2)*dk)},${rgba(fox,0)})`;}
-      else if(t<.74){w=14+r()*48;hh=1;st=`border-radius:1px;background:${rgba(stock.fibc,.3*(isDark()?.6:1))};transform:rotate(${(r()*180)|0}deg)`;}
+      else if(t<.74){w=14+r()*48;hh=1;st=`border-radius:1px;background:${rgba(stock.fibc,isDark()?.09:.3)};transform:rotate(${(r()*180)|0}deg)`;}
       else if(t<.9){w=42+r()*90;hh=w*(.7+r()*.5);st=`border-radius:47% 53% 55% 45%/50% 44% 56% 50%;border:1px solid ${rgba(fox,.11*dk)};background:radial-gradient(closest-side,transparent 62%,${rgba(fox,.07*dk)})`;}
       else{if(v){w=1;hh=cross*(.3+r()*.5);}else{hh=1;w=cross*(.3+r()*.5);}st=`background:rgba(0,0,0,${isDark()?.3:.13});box-shadow:${v?'1px 0':'0 1px'} 0 rgba(255,255,255,${isDark()?.05:.35})`;}
       const L=v?vr.right-rr.left-p-w/2:q-w/2,T=v?q-hh/2:vr.top-rr.top+p-hh/2;el.style.cssText=`left:${L.toFixed(1)}px;top:${T.toFixed(1)}px;width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;spots.append(el);}}
