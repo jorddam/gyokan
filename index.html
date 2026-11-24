@@ -905,7 +905,7 @@ function measure(){
   if(text!==R.text)R.words=null;
   R.lines=lines;R.pages=pages;R.nodes=nodes;R.text=text;R.breaks=breaks;R.extent=lines[lines.length-1].b;if(S.scroll)syncWindow();
 }
-function charPos(nd,m){rg.setStart(nd.n,m);rg.setEnd(nd.n,Math.min(nd.len,m+1));const r=rg.getBoundingClientRect();if(r.width<1||r.height<1)return null;const [a,b]=coords(flow.getBoundingClientRect(),r);return (a+b)/2;}
+function charPos(nd,m){const L=nd.n.nodeValue==null?0:nd.n.nodeValue.length;if(m>=L||!nd.n.isConnected)return null;rg.setStart(nd.n,m);rg.setEnd(nd.n,Math.min(L,m+1));const r=rg.getBoundingClientRect();if(r.width<1||r.height<1)return null;const [a,b]=coords(flow.getBoundingClientRect(),r);return (a+b)/2;}
 function nodeAt(g){const N=R.nodes;let lo=0,hi=N.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(N[mid].off<=g)lo=mid;else hi=mid-1;}return lo;}
 // centre of the character at chapter offset g (or of the next visible character)
 function centerAt(g){const N=R.nodes;if(!N.length)return null;let i=nodeAt(g),m=Math.max(0,g-N[i].off);for(let t=0;t<60&&i<N.length;t++){const nd=N[i];if(m<nd.len){const c=charPos(nd,m);if(c!=null)return c;m++;}else{i++;m=0;}}return null;}
@@ -1111,7 +1111,8 @@ stage.addEventListener('pointerup',e=>{
 stage.addEventListener('pointercancel',()=>{down=null;if(pen){pen=null;drawInk();}});
 let scRaf=0,scT=null;
 viewport.addEventListener('scroll',()=>{if(!S.scroll||!R.book)return;
-  if(!scRaf)scRaf=requestAnimationFrame(()=>{scRaf=0;if(!R.book)return;syncWindow();drawInk();if(Date.now()-(R.progAt||0)>400){closeDict();closeSel();const n=$('#nudge');if(n.dataset.kind==='offer')n.hidden=true;}});
+  if(!scRaf)scRaf=requestAnimationFrame(()=>{scRaf=0;if(!R.book)return;syncWindow();drawInk();if(Date.now()-(R.progAt||0)>400){closeDict();if(selOpen()&&R.sel&&!R.native){clearHl();markRange(R.sel.s,R.sel.e);} // the sentence menu stays through a small scroll or bounce; only its marking is redrawn
+      const n=$('#nudge');if(n.dataset.kind==='offer')n.hidden=true;}});
   clearTimeout(scT);scT=setTimeout(()=>{if(R.book&&S.scroll){syncWindow();hud();saveSoon();}},160);},{passive:true});
 // in scroll mode a finger scrolls and the Pencil writes: stop the Pencil from dragging the page
 viewport.addEventListener('touchstart',e=>{if(!S.scroll)return;for(const t of e.changedTouches)if(t.touchType==='stylus'){e.preventDefault();return;}},{passive:false});
@@ -1583,6 +1584,7 @@ function sentBounds(g){const t=R.text,br=new Set(R.breaks),stop=/[。！？!?]/;
   while(b<t.length&&b-g<500&&!br.has(b)){b++;if(stop.test(t[b-1])){while(b<t.length&&!br.has(b)&&/[」』）)]/.test(t[b]))b++;break;}}
   while(a<b-1&&/\s/.test(t[a]))a++;return [a,b];}
 const selEl=$('#selbar'),selOpen=()=>!selEl.hidden;
+for(const ev of ['pointerdown','pointerup','touchstart','touchend'])selEl.addEventListener(ev,e=>e.stopPropagation(),{passive:true});
 function closeSel(){if(selEl.hidden)return;selEl.hidden=true;R.sel=null;clearHl();
   if(R.native){R.native=false;readerEl.classList.remove('native');try{getSelection().removeAllRanges();}catch(e){}}}
 // turn our highlighted sentence into a real system selection, so the iPad's own menu (翻訳, 調べる, 共有) can act on it
@@ -1595,9 +1597,16 @@ function showSel(a,b){clearHl();R.sel={s:a,e:b};markRange(a,b);selEl.textContent
     closeSel();toast(ok?'コピーしました':'コピーできませんでした');};
   selEl.append(a>0?h('button',{onclick:()=>showSel(sentBounds(a-1)[0],b)},'前の文も'):null||'',h('button',{class:'go',onclick:copy},'コピー'),...[].concat((()=>{const ex=(R.quotes||[]).filter(q=>q.s<b&&q.e>a);
     if(ex.length)return [h('button',{onclick:()=>{const q=ex[0];closeSel();hlWindow(q);}},'解説'),h('button',{onclick:async()=>{closeSel();for(const q of ex)await DB.del('quotes',q.id);const back=markPlace();for(const q of ex)unmarkHi(q.id);R.quotes=R.quotes.filter(q=>!ex.includes(q));measure();try{back();}catch(e){}toast('ハイライトを消しました');}},'ハイライトを消す')];
-    return h('button',{onclick:async()=>{const sl=R.sel,raw=t.slice(sl.s,sl.e),s0=sl.s+(raw.length-raw.trimStart().length),txt=raw.trim(),id='q'+Date.now().toString(36);
-      await DB.put('quotes',{id,bookId:R.book.id,book:R.book.title,ch:R.ch,off:s0,e:s0+txt.length,g:R.before[R.ch]+s0,text:txt,added:Date.now()});closeSel();
-      const back=markPlace();markHi(s0,s0+txt.length,id);(R.quotes=R.quotes||[]).push({id,s:s0,e:s0+txt.length});measure();try{back();}catch(e){}toast('ハイライトして、書き抜きに保存しました',1800);hlWindow({id,s:s0,e:s0+txt.length});}},'ハイライト');})()),h('button',{onclick:nativeSel},'翻訳・調べる'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
+    return h('button',{onclick:async()=>{const sl=R.sel||{s:a,e:b},raw=t.slice(sl.s,sl.e),s0=sl.s+(raw.length-raw.trimStart().length),txt=raw.trim(),id='q'+Date.now().toString(36),rec={id,bookId:R.book.id,book:R.book.title,ch:R.ch,off:s0,e:s0+txt.length,g:R.before[R.ch]+s0,text:txt,added:Date.now()};
+      let step='start';try{closeSel();step='place';let back=null;try{back=markPlace();}catch(e){}
+        step='mark';markHi(s0,s0+txt.length,id);(R.quotes=R.quotes||[]).push({id,s:s0,e:s0+txt.length});
+        step='layout';measure();try{if(back)back();}catch(e){}
+        if(!flow.querySelector(`.hi[data-q="${id}"]`)){ // the tint did not land where the sentence is: find the sentence by its words instead
+          step='find';const at=R.text.indexOf(txt);if(at>=0){markHi(at,at+txt.length,id);rec.off=at;rec.e=at+txt.length;R.quotes[R.quotes.length-1]={id,s:at,e:at+txt.length};measure();}}
+        step='save';await DB.put('quotes',rec);
+        if(!flow.querySelector(`.hi[data-q="${id}"]`))toast('書き抜きには保存しましたが、本文に色を付けられませんでした',5000);else toast('ハイライトして、書き抜きに保存しました',1800);
+        step='window';hlWindow({id,s:rec.off,e:rec.e});
+      }catch(err){LS.set('lastErr',{at:Date.now(),where:'highlight:'+step,msg:String(err&&err.message||err)});toast(`ハイライトできませんでした（${step}：${err&&err.message||err}）`,8000);try{await DB.put('quotes',rec);}catch(e){}}}},'ハイライト');})()),h('button',{onclick:nativeSel},'翻訳・調べる'),b<t.length?h('button',{onclick:()=>showSel(a,sentBounds(b)[1])},'次の文も'):'',h('button',{'aria-label':'閉じる',onclick:closeSel},'×'));
   selEl.style.cssText='';selEl.hidden=false;
   // next to the finger: above it when there is room, otherwise below
   if(R.selAt){const w=selEl.offsetWidth,ht=selEl.offsetHeight,x=clamp(R.selAt[0]-w/2,10,innerWidth-w-10);let y=R.selAt[1]-ht-34;if(y<10)y=R.selAt[1]+34;y=clamp(y,10,innerHeight-ht-10);
