@@ -116,6 +116,7 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .ic{display:inline-flex;width:18px;height:18px;margin-right:10px;vertical-align:-3px;color:var(--mute);flex:none}
 .ic svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .row:has(+ .row[hidden]){border-bottom:0}
+.pop select{font:inherit;font-size:.86rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:190px}
 .seg{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:2px}
 .seg button{padding:6px 12px;border-radius:7px;font-size:.86rem;min-width:44px}
 .seg button[aria-pressed=true]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.18);font-weight:600}
@@ -444,10 +445,12 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
   <div id="aa" class="pop" hidden>
     <div class="row"><span>文字の大きさ</span><div class="seg"><button data-size="-1" aria-label="小さく">小</button><button data-size="1" aria-label="大きく">大</button></div></div>
     <div class="row"><span>上下の余白</span><div class="seg"><button data-mg="-1" aria-label="余白を狭く">狭く</button><button data-mg="1" aria-label="余白を広く">広く</button></div></div>
-    <div class="row"><span>書体</span><div class="seg" id="segFont"><button data-font-v="mincho">明朝</button><button data-font-v="gothic">ゴシック</button></div></div>
+    <div class="row"><span>書体</span><select id="fontSel" aria-label="書体"></select></div>
     <div class="row"><span>組み方</span><div class="seg" id="segDir"><button data-dir-v="v">縦</button><button data-dir-v="h">横</button></div></div>
     <div class="row"><span>ふりがな</span><div class="seg" id="segFuri"><button data-furi-v="auto">知らない語だけ</button><button data-furi-v="book">本のまま</button></div></div>
     <div class="row"><span>送り</span><div class="seg" id="segFlow"><button data-flow-v="page">ページ</button><button data-flow-v="scroll">スクロール</button></div></div>
+    <div class="row" id="physRow"><span>紙の質感</span><div class="seg"><button data-ph="off" aria-pressed="true">切</button><button data-ph="dark" aria-pressed="false">暗い紙</button><button data-ph="light" aria-pressed="false">明るい紙</button></div></div>
+    <div id="physMore" hidden></div>
     <div class="row" id="musicRow"><span>音楽</span><div class="seg"><button data-mu="off" aria-pressed="true">切</button><button data-mu="lofi" aria-pressed="false">ローファイ</button><button data-mu="amb" aria-pressed="false">アンビエント</button></div></div>
     <div class="row" id="musicRow2" hidden><span>音楽の調整</span><div class="seg"><button data-mu="-" aria-label="音を小さく">小</button><button data-mu="+" aria-label="音を大きく">大</button><button data-mu="next">次の曲</button></div></div>
     <div class="row"><span>手書き</span><div class="seg" id="segInk"><button data-ink-v="draw" aria-pressed="true">書く</button><button data-ink-v="erase">消す</button><button data-ink-undo="1">戻す</button></div></div>
@@ -496,9 +499,26 @@ function parseWordList(text){let arr;try{const j=JSON.parse(text);arr=Array.isAr
   if(!arr)arr=text.split(/[\r\n,、\t]+/);return arr.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);}
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
-  d.dataset.font=S.font;if(typeof drawInk==='function')drawInk();
+  applyFont();{const fs=$('#fontSel');if(fs)fs.value=S.font;}if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
+
+/* ---------- reading fonts: the two on the device, plus open-licensed ones fetched from Google Fonts the first time they are used ---------- */
+const WEBFONTS=[['Shippori Mincho','しっぽり明朝'],['Shippori Mincho B1','しっぽり明朝 B1（墨だまり）'],['Zen Old Mincho','ZENオールド明朝'],['Noto Serif JP','Noto 明朝'],['BIZ UDMincho','BIZ UD明朝'],['Hina Mincho','ひな明朝'],['Kaisei Opti','解星オプティ'],['Klee One','クレー（教科書体）'],['Yuji Syuku','佑字 肅（筆）'],['Zen Antique Soft','ZENアンチーク'],['Zen Maru Gothic','ZEN丸ゴシック'],['Kiwi Maru','キウイ丸']];
+const fontLinks=new Set();let fontNowV='',fontWarnT=0,fontT=0;
+function bookSeed(b){let x=2166136261;const s=(b.title||'')+'|'+(b.author||'');for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619);}return x>>>0;}
+// the font in force: this book's own, else one chosen for the book (when that is switched on), else the general choice
+function fontFor(){const b=R.book&&!readerEl.hidden?R.book:null;if(b&&b.font)return b.font;if(b&&S.fontAuto)return WEBFONTS[(bookSeed(b)>>>3)%8][0];return S.font||'mincho';}
+function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFONTS.some(w=>w[0]===f);if(!web&&f!=='gothic')f='mincho';const changed=f!==fontNowV;fontNowV=f;
+  if(!web){d.dataset.font=f;d.style.removeProperty('--read-font');clearTimeout(fontWarnT);return changed;}
+  d.dataset.font='web';d.style.setProperty('--read-font',`"${f}",${/Gothic|Maru/.test(f)?'var(--gothic)':'var(--mincho)'}`);
+  if(!fontLinks.has(f)){fontLinks.add(f);document.head.append(h('link',{rel:'stylesheet',crossorigin:'anonymous',href:'https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+'&display=swap'}));}
+  if(changed){clearTimeout(fontWarnT);fontWarnT=setTimeout(()=>{if(fontNowV!==f||readerEl.hidden)return;let ok=false;try{document.fonts.forEach(x=>{if(x.family.replace(/["']/g,'')===f&&x.status==='loaded')ok=true;});}catch(e){ok=true;}
+    if(!ok)toast('この書体はまだ読み込めていません（最初の一回は通信が必要です）。いまは標準の書体で表示しています',6000);},10000);}
+  return changed;}
+// a font that arrives after the page was laid out can move line ends: lay the text out again, without moving the place
+try{document.fonts.addEventListener('loadingdone',()=>{clearTimeout(fontT);fontT=setTimeout(()=>{if(fontNowV&&document.documentElement.dataset.font==='web'&&!readerEl.hidden&&R.book&&!R.busy)relayout();},300);});}catch(e){}
+{const fs=$('#fontSel');fs.append(h('option',{value:'mincho'},'明朝'),h('option',{value:'gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0]},w[1])));fs.onchange=()=>{S.font=fs.value;saveSettings();applySettings();relayout();};}
 
 /* ---------- zip + epub ---------- */
 async function unzip(buf){
@@ -582,7 +602,7 @@ async function importEpub(file){
   // the same book again (same title, author and length): leave the shelf as it is
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
-  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;pend.splice(pi,1);LS.set('pending',pend);}
+  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;if(p.paper)book.paper=p.paper;if(p.font)book.font=p.font;pend.splice(pi,1);LS.set('pending',pend);}
   if(!book.folder){const f=shelfFor(book.title);if(f){book.folder=f;const fl=LS.get('folders',[]);if(!fl.includes(f)){fl.push(f);LS.set('folders',fl);}}} // a book on the genre list goes straight to its folder
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
@@ -776,7 +796,7 @@ function startStudy(queue){
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),
-    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined})),vocab:await DB.all('vocab'),
+    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined})),vocab:await DB.all('vocab'),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     ink:(await DB.all('ink')).map(r=>{const i=r.id.lastIndexOf(':'),b=books.find(x=>x.id===r.id.slice(0,i));return b&&r.strokes.length?{book:{title:b.title,author:b.author,total:b.total},ch:+r.id.slice(i+1),strokes:r.strokes}:null;}).filter(Boolean)};}
@@ -786,7 +806,7 @@ async function exportBackup(){const data=JSON.stringify(await makeBackup()),name
 async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
-  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;await DB.put('books',b);nb++;}else pending.push(p);}
+  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
@@ -1199,7 +1219,7 @@ const inkC=$('#ink'),ictx=inkC.getContext('2d');
 function sizeInk(){const d=window.devicePixelRatio||1;inkC.width=Math.round(innerWidth*d);inkC.height=Math.round(innerHeight*d);ictx.setTransform(d,0,0,d,0,0);}
 async function loadInk(){const id=R.book.id+':'+R.ch,rec=await DB.get('ink',id);if(!R.book||id!==R.book.id+':'+R.ch)return;R.ink=rec||{id,strokes:[]};drawInk();}
 function saveInk(){if(R.ink)DB.put('ink',R.ink).catch(()=>{});}
-const inkColor=()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2a4d7c';
+const inkColor=()=>(typeof Phys!=='undefined'&&Phys.pencil())||getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2a4d7c';
 function paint(ctx,pts,color,fs){ctx.strokeStyle=ctx.fillStyle=color;ctx.lineCap='round';ctx.lineJoin='round';
   if(pts.length===1){ctx.beginPath();ctx.arc(pts[0][0],pts[0][1],fs*.05,0,7);ctx.fill();return;}
   for(let i=1;i<pts.length;i++){ctx.lineWidth=fs*(.045+.09*((pts[i][2]+pts[i-1][2])/2));ctx.beginPath();ctx.moveTo(pts[i-1][0],pts[i-1][1]);ctx.lineTo(pts[i][0],pts[i][1]);ctx.stroke();}}
@@ -1210,6 +1230,7 @@ function strokePts(st){if(st.v!==isV())return null;const r=charRect(st.a);if(!r)
 function drawInk(){ictx.clearRect(0,0,innerWidth,innerHeight);R.vis=[];if(!R.ink||!R.book||readerEl.hidden)return;const col=inkColor();
   if(S.scroll){const vr=viewport.getBoundingClientRect();ictx.save();ictx.beginPath();if(isV())ictx.rect(vr.left,0,vr.width,innerHeight);else ictx.rect(0,vr.top,innerWidth,vr.height);ictx.clip();}
   for(const st of R.ink.strokes){const pts=strokePts(st);if(pts){R.vis.push({st,pts});paint(ictx,pts,col,S.size);}}
+  if(typeof Phys!=='undefined')Phys.tooth(ictx); // physical: the paper's tooth shows through pencil
   if(S.scroll)ictx.restore();}
 function nearestChar(x,y){const fr=flow.getBoundingClientRect(),v=isV(),c=v?fr.right-x:y-fr.top,p=R.pages[R.page];let best=null,bd=1e9;
   for(const l of R.lines){if(l.b<=p.s+1||l.a>=p.e-1)continue;const d=c<l.a?l.a-c:c>l.b?c-l.b:0;if(d<bd){bd=d;best=l;}}
@@ -1726,6 +1747,200 @@ function showDict(s,e,kids){
   dictEl.style.left=x+'px';dictEl.style.top=y+'px';
 }
 
+
+/* ===== PHYSICAL PAPER (removable): everything between this line and "END PHYSICAL", plus the row with id physRow and the div with id physMore.
+   Two one-line hooks elsewhere mention Phys (in inkColor and drawInk); they do nothing once this block is gone.
+   Paper, light, wear and sound are all made on the device: no image or audio files. ===== */
+var Phys=(()=>{
+  const DEF={on:false,paper:'dark',vol:.5,grain:true,ink:true,bleed:false,ghost:false,spots:true,lamp:true,tilt:false,edges:false,turn:false,sound:true,wear:false,pencil:false,photo:false};
+  const P=S.phys=Object.assign({},DEF,S.phys||{});
+  const FEATS=[['grain','紙の目（文字と一緒に動く）'],['ink','インクのむら'],['bleed','インクのにじみ'],['ghost','裏写り'],['spots','しみ・繊維・折れ'],['lamp','灯り（紙だけが動く）'],['tilt','傾けると灯りが動く'],['edges','小口（読んだ厚み）'],['turn','ページをめくる影'],['sound','紙の音'],['wear','読んだ所の手ずれ'],['pencil','鉛筆とマーカーの質感'],['photo','自分の紙の写真を使う']];
+  const STOCKS=[
+    {id:'sumi',name:'墨',dark:1,base:[21,23,22],ink:'#cdc9bd',mott:.035,speck:.05,fib:70,fibc:[255,255,255],fa:.05},
+    {id:'tan',name:'炭',dark:1,base:[28,25,22],ink:'#d8cfba',mott:.055,speck:.065,fib:170,fibc:[255,236,200],fa:.06},
+    {id:'ai',name:'藍',dark:1,base:[17,22,31],ink:'#c8d0dc',mott:.045,speck:.045,fib:100,fibc:[190,210,255],fa:.06},
+    {id:'kogecha',name:'焦茶',dark:1,base:[31,24,18],ink:'#dccba8',mott:.06,speck:.055,fib:130,fibc:[255,220,170],fa:.06},
+    {id:'kurowashi',name:'黒和紙',dark:1,base:[19,19,21],ink:'#d3d0c8',mott:.03,speck:.035,fib:280,fibc:[255,255,255],fa:.06,long:1},
+    {id:'bunko',name:'文庫',dark:0,base:[238,229,206],ink:'#2a231a',mott:.03,speck:.035,fib:120,fibc:[120,90,50],fa:.08},
+    {id:'zara',name:'更紙',dark:0,base:[216,213,203],ink:'#2a2a28',mott:.045,speck:.07,fib:260,fibc:[60,60,55],fa:.1},
+    {id:'washi',name:'和紙',dark:0,base:[241,238,228],ink:'#26221c',mott:.025,speck:.025,fib:460,fibc:[150,130,100],fa:.13,long:1},
+    {id:'kosho',name:'古書',dark:0,base:[226,209,168],ink:'#3a2c18',mott:.06,speck:.045,fib:140,fibc:[110,70,30],fa:.1},
+    {id:'joshitsu',name:'上質',dark:0,base:[243,241,235],ink:'#1e1e1c',mott:.015,speck:.02,fib:40,fibc:[100,100,100],fa:.05}];
+  const TS=512,IS=640,mod=(a,n)=>((a%n)+n)%n;
+  const rng=s=>{let a=s>>>0;return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};};
+  const cv=(w,hh)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(hh));return c;};
+  const rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+
+  const css=h('style');css.textContent=`
+#physUnder,#physOver{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+#physUnder[hidden],#physOver[hidden],.ph-off{display:none!important}
+.ph-tex{position:absolute;inset:-${TS}px;background-size:${TS}px ${TS}px;will-change:transform}
+.ph-inkv{position:absolute;inset:-${IS}px;background-size:${IS}px ${IS}px;will-change:transform}
+.ph-ghost{position:absolute;will-change:transform;filter:blur(.5px)}
+.ph-spots{position:absolute;inset:0;will-change:transform}
+.ph-spots i{position:absolute;display:block}
+.ph-lamp{position:absolute;inset:0}
+.ph-edge{position:absolute;top:calc(var(--sat) + 26px);bottom:calc(var(--sab) + 26px)}
+.ph-turn{position:absolute;top:0;bottom:0;left:0;width:42%;opacity:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,.34) 55%,rgba(255,255,255,.05) 62%,transparent)}
+.ph-turn.go{animation:phturn .3s ease-out}
+.ph-turn.go.rev{animation-name:phturnr}
+@keyframes phturn{0%{opacity:1;transform:translateX(-100%)}100%{opacity:0;transform:translateX(240%)}}
+@keyframes phturnr{0%{opacity:1;transform:translateX(240%) scaleX(-1)}100%{opacity:0;transform:translateX(-100%) scaleX(-1)}}
+#reader.ph-bleed #flow{text-shadow:0 0 .55px currentColor,0 0 1.3px color-mix(in srgb,currentColor 38%,transparent)}
+#reader.ph-bleed #flow rt{text-shadow:0 0 .3px currentColor}
+#reader.ph-wear #flow .rd-done{color:color-mix(in srgb,var(--text) 76%,transparent);background-color:var(--ph-wear)}
+#reader.ph-pencil #flow .hi{background:var(--ph-hi);border-radius:38% 4px 42% 5px/8px 46% 6px 40%;box-shadow:0 0 2.5px 1px var(--ph-hi)}
+#aa{max-height:calc(100vh - var(--sat) - var(--sab) - 84px);overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+#physMore{padding:4px 0 10px;border-bottom:1px solid var(--line);font-size:.84rem}
+#physMore .pr{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
+#physMore .pr>span{color:var(--mute)}
+#physMore .chk{display:grid;grid-template-columns:1fr;gap:2px;margin:6px 0 4px}
+#physMore label{display:flex;align-items:center;gap:10px;padding:6px 0}
+#physMore input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+#physMore .note{color:var(--mute);font-size:.76rem;line-height:1.5;margin:6px 0 0}`;
+  document.head.append(css);
+  const tex=h('div',{class:'ph-tex'}),ghost=h('div',{class:'ph-ghost'}),spots=h('div',{class:'ph-spots'});
+  const inkv=h('div',{class:'ph-inkv'}),lamp=h('div',{class:'ph-lamp'}),edgeA=h('div',{class:'ph-edge'}),edgeB=h('div',{class:'ph-edge'}),turn=h('div',{class:'ph-turn'});
+  const under=h('div',{id:'physUnder',hidden:''},tex,ghost,spots),over=h('div',{id:'physOver',hidden:''},inkv,lamp,edgeA,edgeB,turn);
+  readerEl.prepend(under);$('#stage').after(over);
+
+  let active=false,was=false,stock=null,base=null,seed=0,gw=0,gh=0,quiet=0,lastC=null,lastCh=-1;
+  const isDark=()=>P.paper!=='light';
+  function stockFor(b){const d=isDark(),pool=STOCKS.filter(s=>!!s.dark===d),pick=b.paper&&b.paper[d?'d':'l'];return pool.find(s=>s.id===pick)||pool[bookSeed(b)%pool.length];}
+
+  /* --- the sheet: mottling, speckle and fibres, seeded by the book; edges wrap so it tiles without a seam --- */
+  let texKey='',texUrl='',texT=0,photo=null,photoP=null,photoV=0;
+  function loadPhoto(){return photoP||(photoP=DB.get('kv','paperImg').then(r=>new Promise(res=>{if(!r||!r.url)return res(null);const im=new Image();im.onload=()=>{photo=im;res(im);};im.onerror=()=>res(null);im.src=r.url;})).catch(()=>null));}
+  function makeTex(st,bs,sd){const px=Math.min(2,window.devicePixelRatio||1),N=TS*px,c=cv(N,N),x=c.getContext('2d'),im=x.createImageData(N,N),d=im.data,r=rng(sd);
+    const lat=g=>{const a=new Float32Array(g*g);for(let i=0;i<a.length;i++)a[i]=r();return a;},A=lat(5),B=lat(19),C=lat(64);
+    const vn=(a,g,u,v)=>{const X=u*g,Y=v*g,x0=X|0,y0=Y|0,fx=X-x0,fy=Y-y0,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy),x1=(x0+1)%g,y1=(y0+1)%g,p=a[y0*g+x0],q=a[y0*g+x1],s=a[y1*g+x0],t=a[y1*g+x1];return p+(q-p)*sx+(s-p)*sy+(p-q-s+t)*sx*sy;};
+    let ph=null,mu=0;
+    if(P.photo&&photo){const t=cv(N,N),tx=t.getContext('2d'),hN=N/2;for(const [fx,fy] of [[0,0],[1,0],[0,1],[1,1]]){tx.save();tx.translate(fx?N:0,fy?N:0);tx.scale(fx?-1:1,fy?-1:1);tx.drawImage(photo,0,0,hN,hN);tx.restore();} // mirrored four ways, so a photo meets itself at every edge
+      const pd=tx.getImageData(0,0,N,N).data;ph=new Float32Array(N*N);for(let i=0;i<ph.length;i++){const l=(pd[i*4]*.3+pd[i*4+1]*.59+pd[i*4+2]*.11)/255;ph[i]=l;mu+=l;}mu/=ph.length;}
+    const km=st.mott*255,ks=st.speck*255,kp=(st.dark?.5:.7)*255;
+    for(let y=0,i=0;y<N;y++){const v=y/N;for(let xx=0;xx<N;xx++,i++){const u=xx/N;
+      let e=ph?(ph[i]-mu)*kp+(r()-.5)*ks*.4:(vn(A,5,u,v)*.5+vn(B,19,u,v)*.3+vn(C,64,u,v)*.2-.5)*km*2+(r()-.5)*ks;
+      const o=i*4;d[o]=bs[0]+e;d[o+1]=bs[1]+e;d[o+2]=bs[2]+e*.92;d[o+3]=255;}}
+    x.putImageData(im,0,0);
+    if(!ph){x.lineCap='round';for(let k=0;k<st.fib;k++){const fx=r()*N,fy=r()*N,an=r()*6.283,len=(st.long?10+r()*46:4+r()*18)*px,bend=(r()-.5)*len*.7,a=st.fa*(.35+r()*.9),w=(st.long?.5+r()*.8:.4+r()*.5)*px;
+      x.strokeStyle=rgba(r()<.75?st.fibc:(st.dark?[0,0,0]:[255,255,255]),a);x.lineWidth=w;
+      for(const ox of [-N,0,N])for(const oy of [-N,0,N]){if(fx+ox<-len||fx+ox>N+len||fy+oy<-len||fy+oy>N+len)continue;x.beginPath();x.moveTo(fx+ox,fy+oy);x.quadraticCurveTo(fx+ox+Math.cos(an)*len/2-Math.sin(an)*bend,fy+oy+Math.sin(an)*len/2+Math.cos(an)*bend,fx+ox+Math.cos(an)*len,fy+oy+Math.sin(an)*len);x.stroke();}}}
+    return c;}
+  /* --- uneven inking: soft patches of bare paper laid over the text, so the print thins there --- */
+  function makeInk(bs,sd){const N=320,c=cv(N,N),x=c.getContext('2d'),r=rng(sd^0x51ed27);
+    for(let k=0;k<15;k++){const px=r()*N,py=r()*N,rad=16+r()*58,a=.1+r()*.27;for(const ox of [-N,0,N])for(const oy of [-N,0,N]){const g=x.createRadialGradient(px+ox,py+oy,0,px+ox,py+oy,rad);g.addColorStop(0,rgba(bs,a));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(px+ox-rad,py+oy-rad,2*rad,2*rad);}}
+    for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.07+r()*.08));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
+    return c.toDataURL();}
+  function paper(){const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
+    inkv.style.backgroundImage=`url(${makeInk(base,seed)})`;
+    texT=setTimeout(()=>{const st=stock,bs=base,k=key;const c=makeTex(st,bs,seed);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);tex.style.backgroundImage=`url(${texUrl})`;},'image/jpeg',.93);},40);}
+
+  /* --- marks that belong to one place in one book: always the same spot in the same chapter --- */
+  function buildSpots(){spots.textContent='';if(!P.spots)return;const v=isV(),vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),fr=flow.getBoundingClientRect(),ext=R.extent||(v?fr.width:fr.height),cross=v?rr.height:rr.width;
+    const n=Math.min(60,Math.round(ext/2400)),r=rng(seed^Math.imul(R.ch+1,7919)),fox=isDark()?[205,175,125]:[150,100,40],dk=isDark()?.5:1;
+    for(let i=0;i<n;i++){const p=r()*ext,q=r()*cross,t=r(),el=h('i');let w,hh,st='';
+      if(t<.5){w=hh=4+r()*15;st=`border-radius:50%;background:radial-gradient(closest-side,${rgba(fox,(.12+r()*.2)*dk)},${rgba(fox,0)})`;}
+      else if(t<.74){w=14+r()*48;hh=1;st=`border-radius:1px;background:${rgba(stock.fibc,.3*(isDark()?.6:1))};transform:rotate(${(r()*180)|0}deg)`;}
+      else if(t<.9){w=42+r()*90;hh=w*(.7+r()*.5);st=`border-radius:47% 53% 55% 45%/50% 44% 56% 50%;border:1px solid ${rgba(fox,.11*dk)};background:radial-gradient(closest-side,transparent 62%,${rgba(fox,.07*dk)})`;}
+      else{if(v){w=1;hh=cross*(.3+r()*.5);}else{hh=1;w=cross*(.3+r()*.5);}st=`background:rgba(0,0,0,${isDark()?.3:.13});box-shadow:${v?'1px 0':'0 1px'} 0 rgba(255,255,255,${isDark()?.05:.35})`;}
+      const L=v?vr.right-rr.left-p-w/2:q-w/2,T=v?q-hh/2:vr.top-rr.top+p-hh/2;el.style.cssText=`left:${L.toFixed(1)}px;top:${T.toFixed(1)}px;width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;spots.append(el);}}
+  /* --- show-through: the other side of the leaf, mirrored and very faint, on the same line pitch as the text --- */
+  let ghostKey='';
+  function buildGhost(){const on=P.ghost&&R.text&&R.text.length>200;ghost.classList.toggle('ph-off',!on);if(!on){gw=gh=0;ghostKey='';return;}
+    const v=isV(),L=R.L,fs=S.size,vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),inl=v?vr.height:vr.width,fam=getComputedStyle(flow).fontFamily;
+    const key=[R.book.id,R.ch,v,L,fs,Math.round(inl),fam,stock.id].join('|');
+    if(key!==ghostKey){ghostKey=key;const lines=14,per=Math.max(4,Math.floor(inl/fs)),c=cv(v?lines*L:inl,v?inl:lines*L),x=c.getContext('2d'),txt=R.text.replace(/\s+/g,''),r=rng(seed^(R.ch*31+5)),start=Math.floor(r()*Math.max(1,txt.length-lines*per));
+      x.font=`${fs}px ${fam}`;x.textAlign='center';x.textBaseline='middle';x.fillStyle=stock.ink;x.globalAlpha=isDark()?.055:.08;x.translate(c.width,0);x.scale(-1,1);
+      for(let l=0;l<lines;l++){const n=l%5===4?Math.floor(per*(.3+r()*.6)):per;for(let k=0;k<n;k++){const ch=txt[(start+l*per+k)%txt.length];if(v)x.fillText(ch,c.width-(l+.5)*L,(k+.5)*fs);else x.fillText(ch,(k+.5)*fs,(l+.5)*L);}}
+      ghost.style.backgroundImage=`url(${c.toDataURL()})`;gw=c.width;gh=c.height;}
+    ghost.style.backgroundSize=`${gw}px ${gh}px`;ghost.style.backgroundRepeat=v?'repeat-x':'repeat-y';
+    if(v){ghost.style.top=(vr.top-rr.top)+'px';ghost.style.height=vr.height+'px';ghost.style.left=ghost.style.right=-gw+'px';ghost.style.bottom='auto';ghost.style.width='auto';}
+    else{ghost.style.left=(vr.left-rr.left)+'px';ghost.style.width=vr.width+'px';ghost.style.top=ghost.style.bottom=-gh+'px';ghost.style.right='auto';ghost.style.height='auto';}}
+
+  /* --- keep the sheet under the words --- */
+  let raf=0;const req=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;sync();});};
+  function sync(){if(!active||!R.book)return;const v=isV(),c=winC0();
+    tex.style.transform=v?`translate3d(${mod(c,TS)}px,0,0)`:`translate3d(0,${-mod(c,TS)}px,0)`;
+    inkv.style.transform=v?`translate3d(${mod(c,IS)}px,0,0)`:`translate3d(0,${-mod(c,IS)}px,0)`;
+    spots.style.transform=v?`translate3d(${c}px,0,0)`:`translate3d(0,${-c}px,0)`;
+    if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();ghost.style.transform=v?`translate3d(${mod(vr.right-rr.left+c,gw)}px,0,0)`:`translate3d(0,${mod(vr.top-rr.top-c,gh)}px,0)`;}
+    if(P.edges){const f=clamp(R.frac||0,0,1),a=v?1-f:f;edgeA.style.width=(2+15*a).toFixed(1)+'px';edgeB.style.width=(2+15*(1-a)).toFixed(1)+'px';}
+    if(!S.scroll&&lastC!=null&&lastCh===R.ch&&Math.abs(c-lastC)>R.L&&performance.now()>quiet)flip(c>lastC);
+    lastC=c;lastCh=R.ch;}
+
+  /* --- sound: filtered noise, louder the faster the paper moves; a short brush for a page --- */
+  let ac=null,ng=null,bp=null,sT=0,idleT=0,pT=0,pC=0;
+  function audio(){if(ac)return ac;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;try{ac=new AC();}catch(e){return null;}
+    const len=ac.sampleRate*2,buf=ac.createBuffer(1,len,ac.sampleRate),d=buf.getChannelData(0);let b=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;b=.62*b+.38*w;d[i]=w*.55+b*.45;}
+    const src=ac.createBufferSource();src.buffer=buf;src.loop=true;const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=650;bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=2400;bp.Q.value=.45;ng=ac.createGain();ng.gain.value=0;
+    src.connect(hp);hp.connect(bp);bp.connect(ng);ng.connect(ac.destination);src.start();return ac;}
+  const wantSound=()=>active&&P.sound&&P.vol>0;
+  function wake(){if(!wantSound()||!audio())return false;if(ac.state!=='running')ac.resume().catch(()=>{});clearTimeout(idleT);idleT=setTimeout(()=>{if(ac&&ac.state==='running')ac.suspend().catch(()=>{});},4000);return true;}
+  function rustle(c){const now=performance.now(),dt=Math.max(8,now-pT),v=Math.abs(c-pC)/dt;pT=now;pC=c;if(dt>300||!wake())return;const t=ac.currentTime,k=Math.min(1,v/2.4);
+    ng.gain.cancelScheduledValues(t);ng.gain.setTargetAtTime(k*P.vol*.11,t,.035);bp.frequency.setTargetAtTime(1700+k*1900,t,.05);
+    clearTimeout(sT);sT=setTimeout(()=>{if(ac)ng.gain.setTargetAtTime(0,ac.currentTime,.07);},80);}
+  function flip(fwd){if(P.turn){turn.classList.remove('go','rev');void turn.offsetWidth;turn.classList.add('go');if(!fwd)turn.classList.add('rev');}
+    if(!wake())return;const t=ac.currentTime+.01;ng.gain.cancelScheduledValues(t);ng.gain.setValueAtTime(0.0001,t);ng.gain.exponentialRampToValueAtTime(Math.max(.0002,P.vol*.2),t+.035);ng.gain.exponentialRampToValueAtTime(.0001,t+.26);
+    bp.frequency.cancelScheduledValues(t);bp.frequency.setValueAtTime(1300,t);bp.frequency.exponentialRampToValueAtTime(3900,t+.2);}
+  function hush(){clearTimeout(sT);if(ac&&ng){ng.gain.cancelScheduledValues(ac.currentTime);ng.gain.setTargetAtTime(0,ac.currentTime,.03);}}
+
+  /* --- light: a pool that stays put while the paper slides under it; it can lean with the tablet --- */
+  let tiltOn=false;
+  function onTilt(e){if(!active||!P.tilt||!P.lamp)return;let g=e.gamma||0,b=(e.beta||0)-40;const an=(screen.orientation&&screen.orientation.angle)||window.orientation||0;if(an===90)[g,b]=[b+40,-g];else if(an===270||an===-90)[g,b]=[-(b+40),g];
+    lamp.style.setProperty('--lx',(50+clamp(g,-35,35)*.9).toFixed(1)+'%');lamp.style.setProperty('--ly',(38+clamp(b,-35,35)*.7).toFixed(1)+'%');}
+  function tilt(){if(tiltOn||!P.tilt)return;const D=window.DeviceOrientationEvent;if(!D)return;const go=()=>{tiltOn=true;addEventListener('deviceorientation',onTilt);};
+    if(typeof D.requestPermission==='function')D.requestPermission().then(s=>{if(s==='granted')go();else toast('傾きの利用が許可されませんでした');}).catch(()=>{});else go();}
+
+  /* --- pencil: graphite with the paper's tooth showing through --- */
+  let toothC=null;
+  function tooth(ctx){if(!active||!P.pencil)return;if(!toothC){toothC=cv(128,128);const x=toothC.getContext('2d'),im=x.createImageData(128,128),r=rng(77);for(let i=0;i<im.data.length;i+=4){const a=r();im.data[i+3]=a*a*255;}x.putImageData(im,0,0);}
+    const c=R.book?winC0():0,v=R.book&&isV();ctx.save();ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=.5;ctx.translate(v?mod(c,128):0,v?0:-mod(c,128));ctx.fillStyle=ctx.createPattern(toothC,'repeat');ctx.fillRect(-128,-128,innerWidth+256,innerHeight+256);ctx.restore();}
+
+  function apply(){const b=R.book;active=!!(P.on&&b&&!readerEl.hidden);under.hidden=over.hidden=!active;
+    const cl=readerEl.classList;cl.toggle('phys',active);for(const k of ['bleed','wear','pencil'])cl.toggle('ph-'+k,active&&!!P[k]);
+    if(typeof applyFont==='function'&&applyFont()&&b&&!readerEl.hidden)setTimeout(()=>relayout(),60);
+    if(!active){for(const k of ['--paper','--text','--ph-hi','--ph-wear'])readerEl.style.removeProperty(k);hush();lastC=null;if(was){was=false;drawInk();}return;}
+    const first=!was;was=true;quiet=performance.now()+600;stock=stockFor(b);seed=bookSeed(b);
+    const r=rng(seed^0xa5a5),warm=(r()-.5)*(stock.dark?5:9),lum=(r()-.5)*(stock.dark?4:7);base=[stock.base[0]+lum+warm,stock.base[1]+lum,stock.base[2]+lum-warm].map(x=>clamp(Math.round(x),0,255)); // each book's sheet sits a little warmer or cooler, lighter or darker
+    const rs=readerEl.style,d=isDark();rs.setProperty('--paper',`rgb(${base})`);rs.setProperty('--text',stock.ink);rs.setProperty('--ph-hi',d?'rgba(226,190,92,.26)':'rgba(255,208,48,.5)');rs.setProperty('--ph-wear',d?'rgba(255,226,170,.035)':'rgba(150,110,50,.07)');
+    tex.classList.toggle('ph-off',!P.grain);inkv.classList.toggle('ph-off',!P.ink);lamp.classList.toggle('ph-off',!P.lamp);spots.classList.toggle('ph-off',!P.spots);edgeA.classList.toggle('ph-off',!P.edges);edgeB.classList.toggle('ph-off',!P.edges);
+    lamp.style.background=d?`radial-gradient(95% 80% at var(--lx,50%) var(--ly,38%),rgba(255,232,190,.075),transparent 60%),radial-gradient(130% 115% at var(--lx,50%) var(--ly,38%),transparent 42%,rgba(0,0,0,.5) 100%)`
+      :`radial-gradient(95% 80% at var(--lx,50%) var(--ly,38%),rgba(255,250,235,.22),transparent 60%),radial-gradient(130% 115% at var(--lx,50%) var(--ly,38%),transparent 45%,rgba(60,40,10,.2) 100%)`;
+    const ln=d?['rgba(255,255,255,.10)','rgba(0,0,0,.5)']:['rgba(255,255,255,.75)','rgba(90,70,40,.3)'],eg=`repeating-linear-gradient(90deg,${ln[0]} 0 1px,${ln[1]} 1px 2.5px)`;
+    edgeA.style.cssText=`left:calc(var(--sal) + 3px);background:${eg};box-shadow:3px 0 6px rgba(0,0,0,${d?.5:.18})`;edgeB.style.cssText=`right:calc(var(--sar) + 3px);background:${eg};box-shadow:-3px 0 6px rgba(0,0,0,${d?.5:.18})`;
+    const go=()=>{if(!active)return;paper();buildSpots();buildGhost();sync();if(first)drawInk();};
+    if(P.photo&&!photo)loadPhoto().then(go);else go();}
+  let apT=0;const later=(ms=180)=>{clearTimeout(apT);apT=setTimeout(apply,ms);};
+
+  /* --- controls --- */
+  function ui(){for(const b of document.querySelectorAll('[data-ph]'))b.setAttribute('aria-pressed',String(b.dataset.ph===(P.on?P.paper:'off')));
+    const m=$('#physMore');if(!m)return;m.textContent='';m.hidden=!P.on;if(!P.on)return;const b=R.book,d=isDark(),slot=d?'d':'l';
+    if(b){const cur=(b.paper&&b.paper[slot])||'',auto=STOCKS.filter(s=>!!s.dark===d)[bookSeed(b)%5];
+      m.append(h('div',{class:'pr'},h('span',null,'この本の紙'),h('select',{'aria-label':'この本の紙',onchange:async e=>{b.paper=Object.assign({},b.paper,{[slot]:e.target.value});await DB.put('books',b);markDirty();apply();}},h('option',{value:''},`おまかせ（${auto.name}）`),...STOCKS.filter(s=>!!s.dark===d).map(s=>h('option',{value:s.id,selected:cur===s.id},s.name)))));
+      m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])))));}
+    const box=h('div',{class:'chk'});
+    const mk=(key,label,get,set)=>{const inp=h('input',{type:'checkbox'});inp.checked=!!get();inp.onchange=()=>set(inp.checked,inp);box.append(h('label',null,inp,label));};
+    for(const [k,label] of FEATS)mk(k,label,()=>P[k],(on,inp)=>{if(k==='photo'&&on&&!photo){loadPhoto().then(im=>{if(im){P.photo=true;saveSettings();texKey='';apply();}else{inp.checked=false;pick.click();}});return;}
+      P[k]=on;saveSettings();if(k==='tilt'&&on)tilt();if(k==='sound'&&on)wake();if(k==='pencil')setTimeout(drawInk,0);apply();});
+    mk('fontAuto','本ごとに書体も変える',()=>S.fontAuto,on=>{S.fontAuto=on;saveSettings();apply();});
+    const pick=h('input',{type:'file',accept:'image/*',hidden:'',onchange:e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const u=URL.createObjectURL(f),im=new Image();
+      im.onload=async()=>{const s=Math.min(1,768/Math.max(im.width,im.height)),c=cv(im.width*s,im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);const url=c.toDataURL('image/jpeg',.86);await DB.put('kv',{id:'paperImg',url});photoP=null;photo=null;await loadPhoto();photoV++;P.photo=true;saveSettings();apply();ui();toast('この写真を紙の質感に使います');};im.onerror=()=>toast('画像を読み込めませんでした');im.src=u;}});
+    m.append(box,pick,h('div',{class:'pr'},h('span',null,'紙の写真'),h('button',{class:'ghost',onclick:()=>pick.click()},'写真を選ぶ')),
+      h('div',{class:'pr'},h('span',null,`紙の音の大きさ ${Math.round(P.vol*10)}`),h('div',{class:'seg'},h('button',{'aria-label':'音を小さく',onclick:()=>{P.vol=clamp(Math.round(P.vol*10-1)/10,0,1);saveSettings();ui();}},'小'),h('button',{'aria-label':'音を大きく',onclick:()=>{P.vol=clamp(Math.round(P.vol*10+1)/10,0,1);saveSettings();ui();if(wake())flip(true);}},'大'))),
+      h('p',{class:'note'},'紙の種類は本ごとに決まり、同じ本はいつも同じ紙です。効果は一つずつ試せます。'));}
+  for(const b of document.querySelectorAll('[data-ph]'))b.addEventListener('click',()=>{const v=b.dataset.ph;P.on=v!=='off';if(P.on)P.paper=v;saveSettings();apply();ui();if(P.on){wake();tilt();}});
+
+  viewport.addEventListener('scroll',()=>{if(!active)return;req();if(S.scroll&&P.sound)rustle(winC0());},{passive:true});
+  readerEl.addEventListener('pointerdown',()=>{if(active){if(P.sound&&P.vol>0&&audio()&&ac.state!=='running')ac.resume().catch(()=>{});tilt();}},{passive:true});
+  new MutationObserver(req).observe(flow,{attributes:true,attributeFilter:['style']});
+  new MutationObserver(()=>later(300)).observe(flow,{childList:true});
+  new MutationObserver(()=>later(200)).observe(viewport,{attributes:true,attributeFilter:['style','class']});
+  new MutationObserver(()=>{later(0);setTimeout(ui,30);}).observe(readerEl,{attributes:true,attributeFilter:['hidden']});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)hush();});
+  ui();
+  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P})};
+})();
+/* ===== END PHYSICAL ===== */
 
 /* ===== MUSIC (removable): everything between this line and "END MUSIC", plus the two rows with id musicRow / musicRow2 =====
    Study music made on the spot by the browser's own synthesiser: no files, no network, no AI. Each "track" draws a key, tempo,
