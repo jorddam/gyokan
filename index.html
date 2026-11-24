@@ -259,6 +259,14 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .picker .foot{display:flex;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--line)}
 .picker .foot .add[disabled]{opacity:.4}
 .picker .none{color:var(--mute);margin:40px auto}
+.picker ul.rows{display:block;padding:0 0 20px}
+.picker ul.rows li{display:flex;align-items:center;gap:14px;padding:10px 2px;border-bottom:1px solid var(--line)}
+.picker ul.rows .t{flex:1;margin:0;font-size:.92rem}
+.picker ul.rows .t small{display:block;color:var(--mute);font-size:.74rem;margin-top:2px}
+.picker ul.rows select{font:inherit;font-size:.84rem;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 8px;max-width:48%}
+.picker ul.rows li.sub{border:0;padding:22px 2px 4px;color:var(--mute);font-size:.8rem}
+.picker .foot.two{justify-content:space-between;align-items:center;gap:14px}
+.picker .foot label{font-size:.84rem;color:var(--mute);display:flex;align-items:center;gap:8px}
 #study{position:fixed;inset:0;background:var(--bg);z-index:40;display:flex;flex-direction:column;padding:calc(var(--sat) + 18px) calc(var(--sar) + 24px) calc(var(--sab) + 28px) calc(var(--sal) + 24px)}
 #study .top{display:flex;justify-content:space-between;align-items:center;color:var(--mute);font-size:.88rem}
 #study .top button{padding:8px 12px}
@@ -575,6 +583,7 @@ async function importEpub(file){
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
   if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;pend.splice(pi,1);LS.set('pending',pend);}
+  if(!book.folder){const f=shelfFor(book.title);if(f){book.folder=f;const fl=LS.get('folders',[]);if(!fl.includes(f)){fl.push(f);LS.set('folders',fl);}}} // a book on the genre list goes straight to its folder
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
 
@@ -679,6 +688,7 @@ function renderShelf(root,books){
     const done=()=>{const n=inp.value.trim();if(n){if(!folders.includes(n)){folders.push(n);LS.set('folders',folders);}set({folder:n});}else renderHome();};
     inp.onkeydown=e=>{if(e.key==='Enter')done();else if(e.key==='Escape')renderHome();};inp.onblur=done;addF.replaceWith(inp);inp.focus();}},'＋ フォルダ');
   frow.append(addF);
+  if(!st.folder&&(syncCfg()||LS.get('shelfMap',null)))frow.append(h('button',{onclick:sortByGenre},'ジャンルで整理'));
   if(st.folder&&books.length)frow.append(h('button',{onclick:()=>pickBooks(st.folder)},'＋ 本を選んで入れる'));
   if(st.folder&&st.folder!==FAV){let armed=false;const del=h('button',{class:'del',onclick:async()=>{if(!armed){armed=true;del.textContent='もう一度押すと削除（本は残ります）';return;}
     for(const b of books)if(b.folder===st.folder){b.folder='';await DB.put('books',b);}LS.set('folders',folders.filter(x=>x!==st.folder));if(home===st.folder)LS.set('homeFolder','');set({folder:''});}},'このフォルダを削除');frow.append(h('span',{class:'gap'}),del);}
@@ -794,7 +804,7 @@ async function restoreBackup(data){
 const SYNC_FILE='gyokan.json',syncCfg=()=>LS.get('sync',null);
 let syncBusy=false,syncT=null,syncDirty=false,syncApplying=false;
 function markDirty(){if(syncApplying||!syncCfg())return;syncDirty=true;clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
-function gh(opt={}){const c=syncCfg();return fetch(`https://api.github.com/repos/${c.repo}/contents/${SYNC_FILE}`,Object.assign({},opt,{headers:Object.assign({'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},opt.headers||{})}));}
+function gh(opt={},file=SYNC_FILE){const c=syncCfg();return fetch(`https://api.github.com/repos/${c.repo}/contents/${file}`,Object.assign({},opt,{headers:Object.assign({'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},opt.headers||{})}));}
 const b64=str=>{const u=new TextEncoder().encode(str);let t='';for(let i=0;i<u.length;i+=0x8000)t+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(t);};
 const syncFail=e=>{LS.set('syncState',{ok:false,at:Date.now(),msg:String(e&&e.message||e)});};
 async function syncPush(){if(!syncCfg()||syncBusy)return;syncBusy=true;clearTimeout(syncT);
@@ -815,6 +825,45 @@ async function syncPull(){if(!syncCfg())return false;
     syncApplying=true;try{await restoreBackup(data);}finally{syncApplying=false;}
     LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});return true;
   }catch(e){syncFail(e);throw e;}}
+/* ---------- genre folders: a title → folder list kept beside the sync file (made from the media library sheet) ---------- */
+const SHELF_FILE='shelves.json';
+const shelfKey=t=>String(t||'').normalize('NFKC').toLowerCase().replace(/[\s\u3000・･:：;；,，、。.!！?？~〜～\-‐‑–—―ー_\/／\\|｜"'“”‘’「」『』()\[\]{}<>〈〉《》【】〔〕#＃*＊&＆]/g,'');
+const shelfBare=t=>String(t||'').normalize('NFKC').replace(/[(\[〈《【〔][^)\]〉》】〕]*[)\]〉》】〕]/g,' ');
+// get the list (kept on the device afterwards, so new books can be filed without a connection)
+async function loadShelves(){if(!syncCfg())return LS.get('shelfMap',null);
+  try{const r=await gh({headers:{'Accept':'application/vnd.github.raw+json'}},SHELF_FILE);if(r.status===404)return LS.get('shelfMap',null);if(!r.ok)throw new Error('GitHub '+r.status);
+    const d=JSON.parse(await r.text());if(!d||!Array.isArray(d.shelves)||!d.books)throw new Error('bad list');const m={shelves:d.shelves,books:d.books,at:Date.now()};LS.set('shelfMap',m);return m;
+  }catch(e){const m=LS.get('shelfMap',null);if(m)return m;throw e;}}
+// which folder a title belongs in: the same title first, then the longest listed title that is part of it (or that it is part of)
+function shelfFor(title,m=LS.get('shelfMap',null)){if(!m||!title)return '';
+  if(!m.keys){m.keys=Object.keys(m.books).map(t=>[shelfKey(t),m.shelves[m.books[t]]]).filter(k=>k[0]&&k[1]).sort((a,b)=>b[0].length-a[0].length);}
+  for(const k of [shelfKey(title),shelfKey(shelfBare(title))]){if(!k)continue;const hit=m.keys.find(x=>x[0]===k);if(hit)return hit[1];}
+  const k=shelfKey(title);if(k.length<4)return '';
+  const part=m.keys.find(x=>x[0].length>=4&&(k.includes(x[0])||x[0].includes(k)));return part?part[1]:'';}
+async function sortByGenre(){let m;toast('ジャンルの一覧を読み込んでいます…',0);
+  try{m=await loadShelves();}catch(e){toast('ジャンルの一覧を読み込めませんでした（'+(e.message||e)+'）',5000);return;}
+  if(!m){toast(syncCfg()?'同期リポジトリに shelves.json がありません':'ジャンルの一覧は同期リポジトリから読み込みます。設定で同期をつないでください',5000);return;}
+  $('.toast').hidden=true;
+  const all=(await DB.all('books')).sort((x,y)=>x.title.localeCompare(y.title,'ja')),pick=new Map();let every=false;
+  const close=()=>box.remove(),go=h('button',{class:'add'}),list=h('ul',{class:'rows'});
+  const upd=()=>{const n=[...pick.values()].filter(Boolean).length;go.disabled=!n;go.textContent=n?`${n}冊を整理する`:'整理する';};
+  const draw=()=>{list.textContent='';pick.clear();const pool=all.filter(b=>every||!b.folder),rows=pool.map(b=>({b,f:shelfFor(b.title,m)})).filter(r=>r.f!==r.b.folder||!r.f);
+    const row=r=>{const sel=h('select',{'aria-label':`${r.b.title}のフォルダ`,onchange:e=>{pick.set(r.b.id,e.target.value);upd();}},h('option',{value:''},r.b.folder?'そのまま':'入れない'));
+      for(const f of m.shelves)sel.append(h('option',{value:f,selected:f===r.f},f));pick.set(r.b.id,r.f);
+      return h('li',null,h('span',{class:'t'},r.b.title,r.b.folder?h('small',null,`今は「${r.b.folder}」`):''),sel);};
+    const hit=rows.filter(r=>r.f),miss=rows.filter(r=>!r.f);
+    if(!rows.length)list.append(h('li',{class:'sub'},every?'すべての本がジャンルどおりに入っています。':'フォルダに入っていない本はありません。'));
+    for(const r of hit)list.append(row(r));
+    if(miss.length){list.append(h('li',{class:'sub'},`一覧に見つからなかった本（${miss.length}冊）。ここで選ぶこともできます。`));for(const r of miss)list.append(row(r));}
+    upd();};
+  go.onclick=async()=>{const folders=LS.get('folders',[]);let n=0,added=false;
+    for(const f of m.shelves)if([...pick.values()].includes(f)&&!folders.includes(f)){folders.push(f);added=true;}
+    for(const b of all){const f=pick.get(b.id);if(f&&f!==b.folder){b.folder=f;await DB.put('books',b);n++;}}
+    LS.set('folders',folders);close();await renderHome();toast(`${n}冊をジャンルのフォルダに入れました`);};
+  const chk=h('input',{type:'checkbox',onchange:e=>{every=e.target.checked;draw();}});
+  const box=h('div',{class:'picker',role:'dialog','aria-label':'ジャンルで整理'},h('div',{class:'top'},h('h2',null,'ジャンルで整理'),h('button',{onclick:close},'やめる')),
+    list,h('div',{class:'foot two'},h('label',null,chk,'フォルダに入っている本も見直す'),go));
+  draw();document.body.append(box);}
 async function syncNow(){const got=await syncPull();await syncPush();return got;}
 function syncRow(){const c=syncCfg(),st=LS.get('syncState',null),hm=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;};
   const note='読書位置・単語帳・手書き・ノート・設定を、自分の非公開GitHubリポジトリに自動で保存します。本そのものは送りません。';
@@ -1746,7 +1795,7 @@ const Music=(()=>{
 (async()=>{applySettings();addIcons($('#aa'));await DB.open();await loadKnown();
   LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
   await renderHome();
-  if(syncCfg())syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});
+  if(syncCfg()){syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});loadShelves().catch(()=>{});}
   try{if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
   window.__ready=true;})();
 </script>
