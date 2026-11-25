@@ -1911,7 +1911,7 @@ var Phys=(()=>{
       if(hd){const r=rng(sd^0x4b1d),ox=Math.floor(r()*HS),oy=Math.floor(r()*HS); // each book looks at its own part of the sheet
         ts.backgroundImage=`url(${hdUrl}),url(${texUrl})`;ts.backgroundSize=`${HS}px ${HS}px,1024px 1024px`;ts.backgroundPosition=`${ox}px ${oy}px,0 0`;ts.backgroundBlendMode=(d?'screen':'difference')+',normal';}
       else{ts.backgroundImage=`url(${texUrl})`;ts.backgroundSize=`${TS}px ${TS}px`;ts.backgroundPosition='0 0';ts.backgroundBlendMode='normal';}
-      sync();},hd?'image/png':'image/jpeg',.93);},40);}
+      drive();sync();},hd?'image/png':'image/jpeg',.93);},40);}
 
   /* --- marks that belong to one place in one book: always the same spot in the same chapter --- */
   function buildSpots(){spots.textContent='';if(!P.spots)return;const v=isV(),vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),fr=flow.getBoundingClientRect(),ext=R.extent||(v?fr.width:fr.height),cross=v?rr.height:rr.width;
@@ -1935,13 +1935,32 @@ var Phys=(()=>{
     if(v){ghost.style.top=(vr.top-rr.top)+'px';ghost.style.height=vr.height+'px';ghost.style.left=ghost.style.right=-gw+'px';ghost.style.bottom='auto';ghost.style.width='auto';}
     else{ghost.style.left=(vr.left-rr.left)+'px';ghost.style.width=vr.width+'px';ghost.style.top=ghost.style.bottom=-gh+'px';ghost.style.right='auto';ghost.style.height='auto';}}
 
-  /* --- keep the sheet under the words --- */
+  /* --- keep the sheet under the words ---
+     Scroll mode: every moving layer is tied to the text's own scroll position by one scroll timeline, so the browser moves
+     them in the same step as the text and they cannot drift apart. Where that is missing (older Safari), and in page mode,
+     the positions are set from script, all in one go. */
   let raf=0;const req=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;sync();});};
+  let tl=null,anims=[],tlBad=false,tlM=0,tlChecks=0,tlMiss=0;
+  const scrollPos=()=>Math.abs(isV()?viewport.scrollLeft:viewport.scrollTop),scrollMax=()=>isV()?viewport.scrollWidth-viewport.clientWidth:viewport.scrollHeight-viewport.clientHeight;
+  function undrive(){for(const a of anims){try{a.cancel();}catch(e){}}anims=[];tl=null;spots.style.left=spots.style.top='0';ghost.style.backgroundPosition='0 0';}
+  function drive(){undrive();if(!active||!R.book||!S.scroll||tlBad||typeof ScrollTimeline!=='function')return;const v=isV(),M=scrollMax();if(M<8)return;
+    try{tl=new ScrollTimeline({source:viewport,axis:v?'x':'y'});tlM=M;tlChecks=tlMiss=0;const k=scrollPos()-winC0(); // what comes before the text in the scroller (the "previous chapter" button)
+      const lay=(el,per)=>anims.push(el.animate(v?[{transform:'translate3d(0,0,0)'},{transform:`translate3d(${per}px,0,0)`}]:[{transform:`translate3d(0,${per}px,0)`},{transform:'translate3d(0,0,0)'}],{timeline:tl,iterations:M/per,fill:'both',easing:'linear'})); // one repeat of the pattern per repeat of the animation
+      lay(tex,texPer);lay(inkv,IS);
+      if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();lay(ghost,v?gw:gh);ghost.style.backgroundPosition=v?`${mod(vr.right-rr.left-k,gw)}px 0`:`0 ${mod(vr.top-rr.top+k,gh)}px`;} // keeps the ghost lines on the text's line pitch
+      anims.push(spots.animate(v?[{transform:'translate3d(0,0,0)'},{transform:`translate3d(${M}px,0,0)`}]:[{transform:'translate3d(0,0,0)'},{transform:`translate3d(0,${-M}px,0)`}],{timeline:tl,fill:'both',easing:'linear'}));spots.style[v?'left':'top']=(v?-k:k)+'px';
+    }catch(e){tlBad=true;undrive();}}
+  // the first few moves are checked against where the layers should be; if the browser's timeline is off, go back to script
+  function tlCheck(c){if(!tl||tlChecks>=8)return;tlChecks++;const v=isV(),m=new DOMMatrixReadOnly(getComputedStyle(tex).transform),got=v?m.m41:m.m42,sp=scrollPos(),want=v?mod(sp,texPer):mod(-sp,texPer);let dlt=Math.abs(mod(got-want,texPer));dlt=Math.min(dlt,texPer-dlt);
+    if(dlt>3&&++tlMiss>=3){tlBad=true;undrive();sync();}}
   function sync(){if(!active||!R.book)return;const v=isV(),c=winC0();
+    if(tl&&Math.abs(scrollMax()-tlM)>1)drive(); // the text grew or shrank: re-tie
+    if(!tl){
     tex.style.transform=v?`translate3d(${mod(c,texPer)}px,0,0)`:`translate3d(0,${mod(-c,texPer)}px,0)`;
-    inkv.style.transform=v?`translate3d(${mod(c,IS)}px,0,0)`:`translate3d(0,${-mod(c,IS)}px,0)`;
+    inkv.style.transform=v?`translate3d(${mod(c,IS)}px,0,0)`:`translate3d(0,${mod(-c,IS)}px,0)`;
     spots.style.transform=v?`translate3d(${c}px,0,0)`:`translate3d(0,${-c}px,0)`;
     if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();ghost.style.transform=v?`translate3d(${mod(vr.right-rr.left+c,gw)}px,0,0)`:`translate3d(0,${mod(vr.top-rr.top-c,gh)}px,0)`;}
+    }else tlCheck(c);
     if(P.edges){const f=clamp(R.frac||0,0,1),a=v?1-f:f;edgeA.style.width=(2+15*a).toFixed(1)+'px';edgeB.style.width=(2+15*(1-a)).toFixed(1)+'px';}
     if(!S.scroll&&lastC!=null&&lastCh===R.ch&&Math.abs(c-lastC)>R.L&&performance.now()>quiet)flip(c>lastC);
     lastC=c;lastCh=R.ch;}
@@ -1977,7 +1996,7 @@ var Phys=(()=>{
   function apply(){const b=R.book;active=!!(P.on&&b&&!readerEl.hidden);under.hidden=over.hidden=!active;
     const cl=readerEl.classList;cl.toggle('phys',active);for(const k of ['bleed','wear','pencil'])cl.toggle('ph-'+k,active&&!!P[k]);
     if(typeof applyFont==='function'&&applyFont()&&b&&!readerEl.hidden)setTimeout(()=>relayout(),60);
-    if(!active){for(const k of ['--paper','--text','--ph-hi','--ph-wear'])readerEl.style.removeProperty(k);hush();lastC=null;if(was){was=false;drawInk();}return;}
+    if(!active){undrive();for(const k of ['--paper','--text','--ph-hi','--ph-wear'])readerEl.style.removeProperty(k);hush();lastC=null;if(was){was=false;drawInk();}return;}
     const first=!was;was=true;quiet=performance.now()+600;stock=stockFor(b);seed=bookSeed(b);
     const r=rng(seed^0xa5a5),warm=(r()-.5)*(stock.dark?5:9),lum=(r()-.5)*(stock.dark?4:7);base=[stock.base[0]+lum+warm,stock.base[1]+lum,stock.base[2]+lum-warm].map(x=>clamp(Math.round(x),0,255)); // each book's sheet sits a little warmer or cooler, lighter or darker
     const rs=readerEl.style,d=isDark();rs.setProperty('--paper',`rgb(${base})`);rs.setProperty('--text',stock.ink);rs.setProperty('--ph-hi',d?'rgba(226,190,92,.26)':'rgba(255,208,48,.5)');rs.setProperty('--ph-wear',d?'rgba(255,226,170,.035)':'rgba(150,110,50,.07)');
@@ -1986,7 +2005,7 @@ var Phys=(()=>{
       :`radial-gradient(95% 80% at var(--lx,50%) var(--ly,38%),rgba(255,250,235,.22),transparent 60%),radial-gradient(130% 115% at var(--lx,50%) var(--ly,38%),transparent 45%,rgba(60,40,10,.2) 100%)`;
     const ln=d?['rgba(255,255,255,.10)','rgba(0,0,0,.5)']:['rgba(255,255,255,.75)','rgba(90,70,40,.3)'],eg=`repeating-linear-gradient(90deg,${ln[0]} 0 1px,${ln[1]} 1px 2.5px)`;
     edgeA.style.cssText=`left:calc(var(--sal) + 3px);background:${eg};box-shadow:3px 0 6px rgba(0,0,0,${d?.5:.18})`;edgeB.style.cssText=`right:calc(var(--sar) + 3px);background:${eg};box-shadow:-3px 0 6px rgba(0,0,0,${d?.5:.18})`;
-    const go=()=>{if(!active)return;paper();buildSpots();buildGhost();sync();if(first)drawInk();};
+    const go=()=>{if(!active)return;paper();buildSpots();buildGhost();drive();sync();if(first)drawInk();};
     if(P.photo&&!photo)loadPhoto().then(go);else go();}
   let apT=0;const later=(ms=180)=>{clearTimeout(apT);apT=setTimeout(apply,ms);};
 
@@ -2014,9 +2033,10 @@ var Phys=(()=>{
   new MutationObserver(()=>later(300)).observe(flow,{childList:true});
   new MutationObserver(()=>later(200)).observe(viewport,{attributes:true,attributeFilter:['style','class']});
   new MutationObserver(()=>{later(0);setTimeout(ui,30);}).observe(readerEl,{attributes:true,attributeFilter:['hidden']});
+  try{new ResizeObserver(()=>{if(active)req();}).observe(flow);}catch(e){}
   document.addEventListener('visibilitychange',()=>{if(document.hidden)hush();});
   ui();
-  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P})};
+  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad})};
 })();
 /* ===== END PHYSICAL ===== */
 
