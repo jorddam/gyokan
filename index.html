@@ -1821,9 +1821,9 @@ function showDict(s,e,kids){
    Two one-line hooks elsewhere mention Phys (in inkColor and drawInk); they do nothing once this block is gone.
    Paper, light, wear and sound are all made on the device: no image or audio files. ===== */
 var Phys=(()=>{
-  const DEF={on:false,paper:'dark',vol:.5,grain:true,ink:true,bleed:false,ghost:false,spots:true,lamp:true,tilt:false,edges:false,turn:false,sound:true,wear:false,pencil:false,photo:false};
+  const DEF={on:false,paper:'dark',vol:.5,grain:true,ink:true,bleed:false,ghost:false,spots:true,lamp:true,tilt:false,edges:false,turn:false,sound:true,wear:false,pencil:false,photo:false,hd:true};
   const P=S.phys=Object.assign({},DEF,S.phys||{});
-  const FEATS=[['grain','紙の目（文字と一緒に動く）'],['ink','インクのむら'],['bleed','インクのにじみ'],['ghost','裏写り'],['spots','しみ・繊維・折れ'],['lamp','灯り（紙だけが動く）'],['tilt','傾けると灯りが動く'],['edges','小口（読んだ厚み）'],['turn','ページをめくる影'],['sound','紙の音'],['wear','読んだ所の手ずれ'],['pencil','鉛筆とマーカーの質感'],['photo','自分の紙の写真を使う']];
+  const FEATS=[['grain','紙の目（文字と一緒に動く）'],['hd','高精細の紙（4K）'],['ink','インクのむら'],['bleed','インクのにじみ'],['ghost','裏写り'],['spots','しみ・繊維・折れ'],['lamp','灯り（紙だけが動く）'],['tilt','傾けると灯りが動く'],['edges','小口（読んだ厚み）'],['turn','ページをめくる影'],['sound','紙の音'],['wear','読んだ所の手ずれ'],['pencil','鉛筆とマーカーの質感'],['photo','自分の紙の写真を使う']];
   const STOCKS=[
     {id:'sumi',name:'墨',dark:1,base:[24,23,21],ink:'#cdc9bd',mott:.035,speck:.05,fib:45,fibc:[255,244,226],fa:.028},
     {id:'tan',name:'炭',dark:1,base:[29,25,21],ink:'#d8cfba',mott:.055,speck:.065,fib:85,fibc:[255,236,200],fa:.032},
@@ -1835,7 +1835,7 @@ var Phys=(()=>{
     {id:'washi',name:'和紙',dark:0,base:[241,238,228],ink:'#26221c',mott:.025,speck:.025,fib:460,fibc:[150,130,100],fa:.13,long:1},
     {id:'kosho',name:'古書',dark:0,base:[226,209,168],ink:'#3a2c18',mott:.06,speck:.045,fib:140,fibc:[110,70,30],fa:.1},
     {id:'joshitsu',name:'上質',dark:0,base:[244,240,231],ink:'#1e1e1c',mott:.015,speck:.02,fib:40,fibc:[100,100,100],fa:.05}];
-  const TS=512,IS=640,mod=(a,n)=>((a%n)+n)%n;
+  const TS=512,IS=640,HS=2048,HM=4.2,HD='paper4k.1.bin',mod=(a,n)=>((a%n)+n)%n;
   const rng=s=>{let a=s>>>0;return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};};
   const cv=(w,hh)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(hh));return c;};
   const rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
@@ -1843,7 +1843,7 @@ var Phys=(()=>{
   const css=h('style');css.textContent=`
 #physUnder,#physOver{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #physUnder[hidden],#physOver[hidden],.ph-off{display:none!important}
-.ph-tex{position:absolute;inset:-${TS}px;background-size:${TS}px ${TS}px;will-change:transform}
+.ph-tex{position:absolute;inset:0;will-change:transform}
 .ph-inkv{position:absolute;inset:-${IS}px;background-size:${IS}px ${IS}px;will-change:transform}
 .ph-ghost{position:absolute;will-change:transform;filter:blur(.5px)}
 .ph-spots{position:absolute;inset:0;will-change:transform}
@@ -1880,18 +1880,18 @@ var Phys=(()=>{
   /* --- the sheet: mottling, speckle and fibres, seeded by the book; edges wrap so it tiles without a seam --- */
   let texKey='',texUrl='',texT=0,photo=null,photoP=null,photoV=0;
   function loadPhoto(){return photoP||(photoP=DB.get('kv','paperImg').then(r=>new Promise(res=>{if(!r||!r.url)return res(null);const im=new Image();im.onload=()=>{photo=im;res(im);};im.onerror=()=>res(null);im.src=r.url;})).catch(()=>null));}
-  function makeTex(st,bs,sd){const px=Math.min(2,window.devicePixelRatio||1),N=TS*px,c=cv(N,N),x=c.getContext('2d'),im=x.createImageData(N,N),d=im.data,r=rng(sd);
-    const lat=g=>{const a=new Float32Array(g*g);for(let i=0;i<a.length;i++)a[i]=r();return a;},A=lat(5),B=lat(19),C=lat(64);
+  function makeTex(st,bs,sd,hd){const px=Math.min(2,window.devicePixelRatio||1),N=hd?512:TS*px,c=cv(N,N),x=c.getContext('2d'),im=x.createImageData(N,N),d=im.data,r=rng(sd);
+    const lat=g=>{const a=new Float32Array(g*g);for(let i=0;i<a.length;i++)a[i]=r();return a;},G=hd?[10,38,128]:[5,19,64],A=lat(G[0]),B=lat(G[1]),C=lat(G[2]),sk=hd?.35:1;if(hd)bs=bs.map(x=>clamp(x+(st.dark?-HM:HM),0,255)); // the map lifts dark paper and lowers light paper by its average, so start that much the other way
     const vn=(a,g,u,v)=>{const X=u*g,Y=v*g,x0=X|0,y0=Y|0,fx=X-x0,fy=Y-y0,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy),x1=(x0+1)%g,y1=(y0+1)%g,p=a[y0*g+x0],q=a[y0*g+x1],s=a[y1*g+x0],t=a[y1*g+x1];return p+(q-p)*sx+(s-p)*sy+(p-q-s+t)*sx*sy;};
     let ph=null,mu=0;
     if(P.photo&&photo){const t=cv(N,N),tx=t.getContext('2d'),hN=N/2;for(const [fx,fy] of [[0,0],[1,0],[0,1],[1,1]]){tx.save();tx.translate(fx?N:0,fy?N:0);tx.scale(fx?-1:1,fy?-1:1);tx.drawImage(photo,0,0,hN,hN);tx.restore();} // mirrored four ways, so a photo meets itself at every edge
       const pd=tx.getImageData(0,0,N,N).data;ph=new Float32Array(N*N);for(let i=0;i<ph.length;i++){const l=(pd[i*4]*.3+pd[i*4+1]*.59+pd[i*4+2]*.11)/255;ph[i]=l;mu+=l;}mu/=ph.length;}
     const km=st.mott*255,ks=st.speck*255,kp=(st.dark?.5:.7)*255;
     for(let y=0,i=0;y<N;y++){const v=y/N;for(let xx=0;xx<N;xx++,i++){const u=xx/N;
-      let e=ph?(ph[i]-mu)*kp+(r()-.5)*ks*.4:(vn(A,5,u,v)*.5+vn(B,19,u,v)*.3+vn(C,64,u,v)*.2-.5)*km*2+(r()-.5)*ks;
+      let e=ph?(ph[i]-mu)*kp+(r()-.5)*ks*.4:(vn(A,G[0],u,v)*.5+vn(B,G[1],u,v)*.3+vn(C,G[2],u,v)*.2-.5)*km*2+(r()-.5)*ks*sk;
       const o=i*4;d[o]=bs[0]+e;d[o+1]=bs[1]+e;d[o+2]=bs[2]+e*.92;d[o+3]=255;}}
     x.putImageData(im,0,0);
-    if(!ph){x.lineCap='round';for(let k=0;k<st.fib;k++){const fx=r()*N,fy=r()*N,an=r()*6.283,len=(st.long?10+r()*46:4+r()*18)*px,bend=(r()-.5)*len*.7,a=st.fa*(.35+r()*.9),w=(st.long?.5+r()*.8:.4+r()*.5)*px;
+    if(!ph&&!hd){x.lineCap='round';for(let k=0;k<st.fib;k++){const fx=r()*N,fy=r()*N,an=r()*6.283,len=(st.long?10+r()*46:4+r()*18)*px,bend=(r()-.5)*len*.7,a=st.fa*(.35+r()*.9),w=(st.long?.5+r()*.8:.4+r()*.5)*px;
       x.strokeStyle=rgba(r()<.75?st.fibc:(st.dark?[0,0,0]:[255,255,255]),a);x.lineWidth=w;
       for(const ox of [-N,0,N])for(const oy of [-N,0,N]){if(fx+ox<-len||fx+ox>N+len||fy+oy<-len||fy+oy>N+len)continue;x.beginPath();x.moveTo(fx+ox,fy+oy);x.quadraticCurveTo(fx+ox+Math.cos(an)*len/2-Math.sin(an)*bend,fy+oy+Math.sin(an)*len/2+Math.cos(an)*bend,fx+ox+Math.cos(an)*len,fy+oy+Math.sin(an)*len);x.stroke();}}}
     return c;}
@@ -1900,9 +1900,18 @@ var Phys=(()=>{
     for(let k=0;k<15;k++){const px=r()*N,py=r()*N,rad=18+r()*60,a=.055+r()*.15;for(const ox of [-N,0,N])for(const oy of [-N,0,N]){const g=x.createRadialGradient(px+ox,py+oy,0,px+ox,py+oy,rad);g.addColorStop(0,rgba(bs,a));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(px+ox-rad,py+oy-rad,2*rad,2*rad);}}
     for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.035+r()*.045));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
     return c.toDataURL();}
-  function paper(){const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
+  // the 4K map is one file, fetched once and then kept by the app's offline store; until it is there the sheet is made the earlier way
+  let hdUrl='',hdState=0,texPer=TS;
+  function hdLoad(){if(hdState||!P.hd)return;hdState=1;fetch(HD).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(b=>{hdUrl=URL.createObjectURL(new Blob([b],{type:'image/jpeg'}));hdState=2;if(active)apply();}).catch(()=>{hdState=0;});}
+  function paper(){hdLoad();const hd=!!(P.hd&&hdState===2&&!(P.photo&&photo)),v=isV(),d=isDark();
+    const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1,hd,v].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
     inkv.style.backgroundImage=`url(${makeInk(base,seed)})`;
-    texT=setTimeout(()=>{const st=stock,bs=base,k=key;const c=makeTex(st,bs,seed);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);tex.style.backgroundImage=`url(${texUrl})`;},'image/jpeg',.93);},40);}
+    texT=setTimeout(()=>{const st=stock,bs=base,k=key,sd=seed;const c=makeTex(st,bs,sd,hd);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);
+      const per=texPer=hd?HS:TS,ts=tex.style;ts.inset=v?`0 0 0 -${per}px`:`-${per}px 0 0 0`;
+      if(hd){const r=rng(sd^0x4b1d),ox=Math.floor(r()*HS),oy=Math.floor(r()*HS); // each book looks at its own part of the sheet
+        ts.backgroundImage=`url(${hdUrl}),url(${texUrl})`;ts.backgroundSize=`${HS}px ${HS}px,1024px 1024px`;ts.backgroundPosition=`${ox}px ${oy}px,0 0`;ts.backgroundBlendMode=(d?'screen':'difference')+',normal';}
+      else{ts.backgroundImage=`url(${texUrl})`;ts.backgroundSize=`${TS}px ${TS}px`;ts.backgroundPosition='0 0';ts.backgroundBlendMode='normal';}
+      sync();},hd?'image/png':'image/jpeg',.93);},40);}
 
   /* --- marks that belong to one place in one book: always the same spot in the same chapter --- */
   function buildSpots(){spots.textContent='';if(!P.spots)return;const v=isV(),vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),fr=flow.getBoundingClientRect(),ext=R.extent||(v?fr.width:fr.height),cross=v?rr.height:rr.width;
@@ -1929,7 +1938,7 @@ var Phys=(()=>{
   /* --- keep the sheet under the words --- */
   let raf=0;const req=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;sync();});};
   function sync(){if(!active||!R.book)return;const v=isV(),c=winC0();
-    tex.style.transform=v?`translate3d(${mod(c,TS)}px,0,0)`:`translate3d(0,${-mod(c,TS)}px,0)`;
+    tex.style.transform=v?`translate3d(${mod(c,texPer)}px,0,0)`:`translate3d(0,${mod(-c,texPer)}px,0)`;
     inkv.style.transform=v?`translate3d(${mod(c,IS)}px,0,0)`:`translate3d(0,${-mod(c,IS)}px,0)`;
     spots.style.transform=v?`translate3d(${c}px,0,0)`:`translate3d(0,${-c}px,0)`;
     if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();ghost.style.transform=v?`translate3d(${mod(vr.right-rr.left+c,gw)}px,0,0)`:`translate3d(0,${mod(vr.top-rr.top-c,gh)}px,0)`;}
