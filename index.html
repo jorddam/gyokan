@@ -1843,10 +1843,12 @@ var Phys=(()=>{
   const css=h('style');css.textContent=`
 #physUnder,#physOver{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 #physUnder[hidden],#physOver[hidden],.ph-off{display:none!important}
-.ph-tex{position:absolute;inset:0;will-change:transform}
-.ph-inkv{position:absolute;inset:0;background-size:${IS}px ${IS}px;will-change:transform}
-.ph-ghost{position:absolute;will-change:transform}
-.ph-spots{position:absolute;inset:0;will-change:transform}
+.ph-move{position:absolute;inset:0;will-change:transform}
+.ph-lay,.ph-spots{position:absolute;inset:0}
+.ph-c{position:absolute;will-change:transform}
+.ph-tex .ph-c{background-image:var(--ph-bi);background-size:var(--ph-bs);background-blend-mode:var(--ph-bb)}
+.ph-inkv .ph-c{background-image:var(--ph-ink);background-size:${IS/2}px ${IS/2}px;transform:scale(2);transform-origin:0 0}
+.ph-ghost .ph-c{background-image:var(--ph-gh)}
 .ph-spots i{position:absolute;display:block}
 #reader.phys #viewport.scroll{isolation:isolate}
 .ph-spot{position:absolute;display:block;pointer-events:none;z-index:-1}
@@ -1870,9 +1872,10 @@ var Phys=(()=>{
 #physMore input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
 #physMore .note{color:var(--mute);font-size:.76rem;line-height:1.5;margin:6px 0 0}`;
   document.head.append(css);
-  const tex=h('div',{class:'ph-tex'}),ghost=h('div',{class:'ph-ghost'}),spots=h('div',{class:'ph-spots'});
-  const inkv=h('div',{class:'ph-inkv'}),lamp=h('div',{class:'ph-lamp'}),edgeA=h('div',{class:'ph-edge'}),edgeB=h('div',{class:'ph-edge'}),turn=h('div',{class:'ph-turn'});
-  const under=h('div',{id:'physUnder',hidden:''},tex,ghost,spots),over=h('div',{id:'physOver',hidden:''},inkv,lamp,edgeA,edgeB,turn);
+  const tex=h('div',{class:'ph-lay ph-tex'}),ghost=h('div',{class:'ph-lay ph-ghost'}),spots=h('div',{class:'ph-spots'});
+  const inkv=h('div',{class:'ph-lay ph-inkv'}),lamp=h('div',{class:'ph-lamp'}),edgeA=h('div',{class:'ph-edge'}),edgeB=h('div',{class:'ph-edge'}),turn=h('div',{class:'ph-turn'});
+  const uMove=h('div',{class:'ph-move'},tex,ghost,spots),oMove=h('div',{class:'ph-move'},inkv);
+  const under=h('div',{id:'physUnder',hidden:''},uMove),over=h('div',{id:'physOver',hidden:''},oMove,lamp,edgeA,edgeB,turn);
   readerEl.prepend(under);$('#stage').after(over);
 
   let active=false,was=false,stock=null,base=null,seed=0,gw=0,gh=0,quiet=0,lastC=null,lastCh=-1;
@@ -1903,17 +1906,17 @@ var Phys=(()=>{
     for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.035+r()*.045));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
     return c.toDataURL();}
   // the 4K map is one file, fetched once and then kept by the app's offline store; until it is there the sheet is made the earlier way
-  let hdUrl='',hdState=0,texPer=TS;
+  let hdUrl='',hdState=0,hdOn=false,hdX=0,hdY=0;
   function hdLoad(){if(hdState||!P.hd)return;hdState=1;fetch(HD).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(b=>{hdUrl=URL.createObjectURL(new Blob([b],{type:'image/jpeg'}));hdState=2;if(active)apply();}).catch(()=>{hdState=0;});}
   function paper(){hdLoad();const hd=!!(P.hd&&hdState===2&&!(P.photo&&photo)),v=isV(),d=isDark();
     const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1,hd,v].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
-    inkv.style.backgroundImage=`url(${makeInk(base,seed)})`;
+    inkv.style.setProperty('--ph-ink',`url(${makeInk(base,seed)})`);
     texT=setTimeout(()=>{const st=stock,bs=base,k=key,sd=seed;const c=makeTex(st,bs,sd,hd);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);
-      const per=texPer=hd?HS:TS,ts=tex.style;ts.inset=v?`0 0 0 -${per}px`:`-${per}px 0 0 0`;
-      if(hd){const r=rng(sd^0x4b1d),ox=Math.floor(r()*HS),oy=Math.floor(r()*HS); // each book looks at its own part of the sheet
-        ts.backgroundImage=`url(${hdUrl}),url(${texUrl})`;ts.backgroundSize=`${HS}px ${HS}px,1024px 1024px`;ts.backgroundPosition=`${ox}px ${oy}px,0 0`;ts.backgroundBlendMode=(d?'screen':'difference')+',normal';}
-      else{ts.backgroundImage=`url(${texUrl})`;ts.backgroundSize=`${TS}px ${TS}px`;ts.backgroundPosition='0 0';ts.backgroundBlendMode='normal';}
-      drive();sync();},hd?'image/png':'image/jpeg',.93);},40);}
+      const ts=tex.style;hdOn=hd;
+      if(hd){const r=rng(sd^0x4b1d);hdX=Math.floor(r()*HS);hdY=Math.floor(r()*HS); // each book looks at its own part of the sheet
+        ts.setProperty('--ph-bi',`url(${hdUrl}),url(${texUrl})`);ts.setProperty('--ph-bs',`${HS}px ${HS}px,1024px 1024px`);ts.setProperty('--ph-bb',(d?'screen':'difference')+',normal');}
+      else{ts.setProperty('--ph-bi',`url(${texUrl})`);ts.setProperty('--ph-bs',`${TS}px ${TS}px`);ts.setProperty('--ph-bb','normal');}
+      retile(LAY[0]);drive();sync();},hd?'image/png':'image/jpeg',.93);},40);}
 
   /* --- marks that belong to one place in one book: always the same spot in the same chapter --- */
   let inSpots=[];const clearSpots=()=>{spots.textContent='';for(const e of inSpots)e.remove();inSpots=[];};
@@ -1929,16 +1932,14 @@ var Phys=(()=>{
       const L=v?vr.right-rr.left-p-w/2:q-w/2,T=v?q-hh/2:vr.top-rr.top+p-hh/2;el.style.cssText=`left:${L.toFixed(1)}px;top:${T.toFixed(1)}px;width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;spots.append(el);}}
   /* --- show-through: the other side of the leaf, mirrored and very faint, on the same line pitch as the text --- */
   let ghostKey='';
-  function buildGhost(){const on=P.ghost&&R.text&&R.text.length>200;ghost.classList.toggle('ph-off',!on);if(!on){gw=gh=0;ghostKey='';return;}
+  function buildGhost(){const on=P.ghost&&R.text&&R.text.length>200;ghost.classList.toggle('ph-off',!on);if(!on){gw=gh=0;ghostKey='';retile(LAY[2]);return;}
     const v=isV(),L=R.L,fs=S.size,vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),inl=v?vr.height:vr.width,fam=getComputedStyle(flow).fontFamily;
     const key=[R.book.id,R.ch,v,L,fs,Math.round(inl),fam,stock.id].join('|');
     if(key!==ghostKey){ghostKey=key;const lines=14,per=Math.max(4,Math.floor(inl/fs)),c=cv(v?lines*L:inl,v?inl:lines*L),x=c.getContext('2d'),txt=R.text.replace(/\s+/g,''),r=rng(seed^(R.ch*31+5)),start=Math.floor(r()*Math.max(1,txt.length-lines*per));
       x.font=`${fs}px ${fam}`;x.textAlign='center';x.textBaseline='middle';x.fillStyle=stock.ink;x.globalAlpha=(isDark()?.055:.08)/2.2;x.translate(c.width,0);x.scale(-1,1);
       for(let l=0;l<lines;l++){const n=l%5===4?Math.floor(per*(.3+r()*.6)):per;for(let k=0;k<n;k++){const ch=txt[(start+l*per+k)%txt.length];for(const [ox,oy] of [[0,0],[.7,0],[0,.7]]){if(v)x.fillText(ch,c.width-(l+.5)*L+ox,(k+.5)*fs+oy);else x.fillText(ch,(k+.5)*fs+ox,(l+.5)*L+oy);}}}
-      ghost.style.backgroundImage=`url(${c.toDataURL()})`;gw=c.width;gh=c.height;}
-    ghost.style.backgroundSize=`${gw}px ${gh}px`;ghost.style.backgroundRepeat=v?'repeat-x':'repeat-y';
-    if(v){ghost.style.top=(vr.top-rr.top)+'px';ghost.style.height=vr.height+'px';ghost.style.left=-gw+'px';ghost.style.right='0';ghost.style.bottom='auto';ghost.style.width='auto';}
-    else{ghost.style.left=(vr.left-rr.left)+'px';ghost.style.width=vr.width+'px';ghost.style.top=-gh+'px';ghost.style.bottom='0';ghost.style.right='auto';ghost.style.height='auto';}}
+      ghost.style.setProperty('--ph-gh',`url(${c.toDataURL()})`);gw=c.width;gh=c.height;}
+    retile(LAY[2]);}
 
   /* --- keep the sheet under the words ---
      Scroll mode: every moving layer is tied to the text's own scroll position by one scroll timeline, so the browser moves
@@ -1947,25 +1948,35 @@ var Phys=(()=>{
   let raf=0;const req=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;sync();});};
   let tl=null,anims=[],tlBad=false,tlM=0,tlChecks=0,tlMiss=0;
   const scrollPos=()=>Math.abs(isV()?viewport.scrollLeft:viewport.scrollTop),scrollMax=()=>isV()?viewport.scrollWidth-viewport.clientWidth:viewport.scrollHeight-viewport.clientHeight;
-  function undrive(){for(const a of anims){try{a.cancel();}catch(e){}}anims=[];tl=null;spots.style.left=spots.style.top='0';ghost.style.backgroundPosition='0 0';}
+  /* The moving layers are laid as pieces (CW long, the full height of the screen) inside two holders, one under the text and one over it.
+     Only the pieces near what is on screen exist; more are put down ahead as the text moves, and those left behind are taken up.
+     The holders move in one unbroken slide from the start of the chapter to its end. Nothing ever jumps back to repeat, so there is
+     no point in the chapter where a layer has to be redrawn all at once. */
+  const CW=768,LAY=[
+    {box:tex,on:()=>P.grain,map:new Map(),dress(el,at,v,W,H){const b=hdOn?(v?`${mod(hdX-at,HS)}px ${hdY}px,${mod(-at,1024)}px 0`:`${hdX}px ${mod(hdY-at,HS)}px,0 ${mod(-at,1024)}px`):(v?`${mod(-at,TS)}px 0`:`0 ${mod(-at,TS)}px`);
+      el.style.cssText=(v?`left:${at}px;top:0;width:${CW+2}px;height:${H}px;`:`top:${at}px;left:0;height:${CW+2}px;width:${W}px;`)+`background-position:${b}`;}}, // two points of overlap: no hairline between neighbours
+    {box:inkv,on:()=>P.ink,map:new Map(),dress(el,at,v,W,H){el.style.cssText=v?`left:${at}px;top:0;width:${CW/2}px;height:${Math.ceil(H/2)}px;background-position:${mod(-at/2,IS/2)}px 0`:`top:${at}px;left:0;height:${CW/2}px;width:${Math.ceil(W/2)}px;background-position:0 ${mod(-at/2,IS/2)}px`;}}, // drawn at half size and doubled: the patches are soft anyway
+    {box:ghost,on:()=>gw>0,map:new Map(),dress(el,at,v){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();
+      el.style.cssText=v?`left:${at}px;top:${vr.top-rr.top}px;width:${CW}px;height:${vr.height}px;background-size:${gw}px ${gh}px;background-repeat:repeat-x;background-position:${mod(vr.right-rr.left-at,gw)}px 0`
+        :`top:${at}px;left:${vr.left-rr.left}px;height:${CW}px;width:${vr.width}px;background-size:${gw}px ${gh}px;background-repeat:repeat-y;background-position:0 ${mod(vr.top-rr.top-at,gh)}px`;}}];
+  let tileKey='';
+  function retile(l){for(const x of l?[l]:LAY){for(const e of x.map.values())e.remove();x.map.clear();}}
+  function tile(c){const v=isV(),W=readerEl.clientWidth,H=readerEl.clientHeight,a0=v?-c:c,j0=Math.floor(a0/CW)-1,j1=Math.floor((a0+(v?W:H))/CW)+1; // one piece spare on each side
+    for(const l of LAY){if(!l.on()){if(l.map.size)retile(l);continue;}
+      for(const [j,e] of l.map)if(j<j0||j>j1){e.remove();l.map.delete(j);}
+      for(let j=j0;j<=j1;j++)if(!l.map.has(j)){const e=h('div',{class:'ph-c'});l.dress(e,j*CW,v,W,H);l.box.append(e);l.map.set(j,e);}}}
+  function undrive(){for(const a of anims){try{a.cancel();}catch(e){}}anims=[];tl=null;for(const m of [uMove,oMove])m.style.left=m.style.top='0';}
   function drive(){undrive();if(!active||!R.book||!S.scroll||tlBad||typeof ScrollTimeline!=='function')return;const v=isV(),M=scrollMax();if(M<8)return;
     try{tl=new ScrollTimeline({source:viewport,axis:v?'x':'y'});tlM=M;tlChecks=tlMiss=0;const k=scrollPos()-winC0(); // what comes before the text in the scroller (the "previous chapter" button)
-      const lay=(el,per)=>anims.push(el.animate(v?[{transform:'translate3d(0,0,0)'},{transform:`translate3d(${per}px,0,0)`}]:[{transform:`translate3d(0,${per}px,0)`},{transform:'translate3d(0,0,0)'}],{timeline:tl,iterations:M/per,fill:'both',easing:'linear'})); // one repeat of the pattern per repeat of the animation
-      lay(tex,texPer);lay(inkv,IS);
-      if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();lay(ghost,v?gw:gh);ghost.style.backgroundPosition=v?`${mod(vr.right-rr.left-k,gw)}px 0`:`0 ${mod(vr.top-rr.top+k,gh)}px`;} // keeps the ghost lines on the text's line pitch
-      if(spots.childElementCount)anims.push(spots.animate(v?[{transform:'translate3d(0,0,0)'},{transform:`translate3d(${M}px,0,0)`}]:[{transform:'translate3d(0,0,0)'},{transform:`translate3d(0,${-M}px,0)`}],{timeline:tl,fill:'both',easing:'linear'}));spots.style[v?'left':'top']=(v?-k:k)+'px';
+      for(const m of [uMove,oMove]){anims.push(m.animate(v?[{transform:'translate3d(0,0,0)'},{transform:`translate3d(${M}px,0,0)`}]:[{transform:'translate3d(0,0,0)'},{transform:`translate3d(0,${-M}px,0)`}],{timeline:tl,fill:'both',easing:'linear'}));m.style[v?'left':'top']=(v?-k:k)+'px';}
     }catch(e){tlBad=true;undrive();}}
-  // the first few moves are checked against where the layers should be; if the browser's timeline is off, go back to script
-  function tlCheck(c){if(!tl||tlChecks>=8)return;tlChecks++;const v=isV(),m=new DOMMatrixReadOnly(getComputedStyle(tex).transform),got=v?m.m41:m.m42,sp=scrollPos(),want=v?mod(sp,texPer):mod(-sp,texPer);let dlt=Math.abs(mod(got-want,texPer));dlt=Math.min(dlt,texPer-dlt);
-    if(dlt>3&&++tlMiss>=3){tlBad=true;undrive();sync();}}
+  // the first few moves are checked against where the holders should be; if the browser's timeline is off, go back to script
+  function tlCheck(){if(!tl||tlChecks>=8)return;tlChecks++;const v=isV(),m=new DOMMatrixReadOnly(getComputedStyle(uMove).transform),sp=scrollPos();
+    if(Math.abs((v?m.m41:-m.m42)-sp)>3&&++tlMiss>=3){tlBad=true;undrive();sync();}}
   function sync(){if(!active||!R.book)return;const v=isV(),c=winC0();
     if(tl&&Math.abs(scrollMax()-tlM)>1)drive(); // the text grew or shrank: re-tie
-    if(!tl){
-    tex.style.transform=v?`translate3d(${mod(c,texPer)}px,0,0)`:`translate3d(0,${mod(-c,texPer)}px,0)`;
-    inkv.style.transform=v?`translate3d(${mod(c,IS)}px,0,0)`:`translate3d(0,${mod(-c,IS)}px,0)`;
-    spots.style.transform=v?`translate3d(${c}px,0,0)`:`translate3d(0,${-c}px,0)`;
-    if(gw){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();ghost.style.transform=v?`translate3d(${mod(vr.right-rr.left+c,gw)}px,0,0)`:`translate3d(0,${mod(vr.top-rr.top-c,gh)}px,0)`;}
-    }else tlCheck(c);
+    if(!tl)uMove.style.transform=oMove.style.transform=v?`translate3d(${c}px,0,0)`:`translate3d(0,${-c}px,0)`;else tlCheck();
+    tile(c);
     if(P.edges){const f=clamp(R.frac||0,0,1),a=v?1-f:f;edgeA.style.width=(2+15*a).toFixed(1)+'px';edgeB.style.width=(2+15*(1-a)).toFixed(1)+'px';}
     if(!S.scroll&&lastC!=null&&lastCh===R.ch&&Math.abs(c-lastC)>R.L&&performance.now()>quiet)flip(c>lastC);
     lastC=c;lastCh=R.ch;}
@@ -2005,7 +2016,7 @@ var Phys=(()=>{
     const first=!was;was=true;quiet=performance.now()+600;stock=stockFor(b);seed=bookSeed(b);
     const r=rng(seed^0xa5a5),warm=(r()-.5)*(stock.dark?5:9),lum=(r()-.5)*(stock.dark?4:7);base=[stock.base[0]+lum+warm,stock.base[1]+lum,stock.base[2]+lum-warm].map(x=>clamp(Math.round(x),0,255)); // each book's sheet sits a little warmer or cooler, lighter or darker
     const rs=readerEl.style,d=isDark();rs.setProperty('--paper',`rgb(${base})`);rs.setProperty('--text',stock.ink);rs.setProperty('--ph-hi',d?'rgba(226,190,92,.26)':'rgba(255,208,48,.5)');rs.setProperty('--ph-wear',d?'rgba(255,226,170,.035)':'rgba(150,110,50,.07)');
-    tex.classList.toggle('ph-off',!P.grain);inkv.classList.toggle('ph-off',!P.ink);inkv.style.inset=isV()?`0 0 0 -${IS}px`:`-${IS}px 0 0 0`;lamp.classList.toggle('ph-off',!P.lamp);spots.classList.toggle('ph-off',!P.spots);edgeA.classList.toggle('ph-off',!P.edges);edgeB.classList.toggle('ph-off',!P.edges);
+    tex.classList.toggle('ph-off',!P.grain);inkv.classList.toggle('ph-off',!P.ink);lamp.classList.toggle('ph-off',!P.lamp);spots.classList.toggle('ph-off',!P.spots);{const kk=[isV(),readerEl.clientWidth,readerEl.clientHeight].join();if(kk!==tileKey){tileKey=kk;retile();}}edgeA.classList.toggle('ph-off',!P.edges);edgeB.classList.toggle('ph-off',!P.edges);
     lamp.style.background=d?`radial-gradient(95% 80% at var(--lx,50%) var(--ly,38%),rgba(255,232,190,.075),transparent 60%),radial-gradient(130% 115% at var(--lx,50%) var(--ly,38%),transparent 42%,rgba(0,0,0,.5) 100%)`
       :`radial-gradient(95% 80% at var(--lx,50%) var(--ly,38%),rgba(255,250,235,.22),transparent 60%),radial-gradient(130% 115% at var(--lx,50%) var(--ly,38%),transparent 45%,rgba(60,40,10,.2) 100%)`;
     const ln=d?['rgba(255,255,255,.10)','rgba(0,0,0,.5)']:['rgba(255,255,255,.75)','rgba(90,70,40,.3)'],eg=`repeating-linear-gradient(90deg,${ln[0]} 0 1px,${ln[1]} 1px 2.5px)`;
@@ -2041,7 +2052,7 @@ var Phys=(()=>{
   try{new ResizeObserver(()=>{if(active)req();}).observe(flow);}catch(e){}
   document.addEventListener('visibilitychange',()=>{if(document.hidden)hush();});
   ui();
-  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad})};
+  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad,pieces:LAY.map(l=>l.map.size)})};
 })();
 /* ===== END PHYSICAL ===== */
 
