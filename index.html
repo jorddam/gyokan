@@ -504,16 +504,19 @@ function parseWordList(text){let arr;try{const j=JSON.parse(text);arr=Array.isAr
   if(!arr)arr=text.split(/[\r\n,、\t]+/);return arr.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);}
 function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
-  applyFont();{const fs=$('#fontSel');if(fs)fs.value=S.font;}if(typeof drawInk==='function')drawInk();
+  applyFont();{const fs=$('#fontSel');if(fs)fs.value=S.fontAuto!==false?'*':S.font;}if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
   for(const b of document.querySelectorAll('[data-font-v]'))b.setAttribute('aria-pressed',b.dataset.fontV===S.font);}
 
 /* ---------- reading fonts: the two on the device, plus open-licensed ones fetched from Google Fonts the first time they are used ---------- */
 const WEBFONTS=[['Shippori Mincho','しっぽり明朝'],['Shippori Mincho B1','しっぽり明朝 B1（墨だまり）'],['Zen Old Mincho','ZENオールド明朝'],['Noto Serif JP','Noto 明朝'],['BIZ UDMincho','BIZ UD明朝'],['Hina Mincho','ひな明朝'],['Kaisei Opti','解星オプティ'],['Klee One','クレー（教科書体）'],['Yuji Syuku','佑字 肅（筆）'],['Zen Antique Soft','ZENアンチーク'],['Zen Maru Gothic','ZEN丸ゴシック'],['Kiwi Maru','キウイ丸']];
+const FONT_POOL=['mincho',...WEBFONTS.slice(0,8).map(w=>w[0])]; // faces fit for long reading: the device's mincho and the first eight of the list
 const fontLinks=new Set();let fontNowV='',fontWarnT=0,fontT=0;
 function bookSeed(b){let x=2166136261;const s=(b.title||'')+'|'+(b.author||'');for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619);}return x>>>0;}
 // the font in force: this book's own, else one chosen for the book (when that is switched on), else the general choice
-function fontFor(){const b=R.book&&!readerEl.hidden?R.book:null;if(b&&b.font)return b.font;if(b&&S.fontAuto)return WEBFONTS[(bookSeed(b)>>>3)%8][0];return S.font||'mincho';}
+function fontFor(){const b=R.book&&!readerEl.hidden?R.book:null;if(b&&b.font)return b.font;if(b&&S.fontAuto!==false){ // each book gets one of the text faces, drawn by lot from its title and author, and keeps it: the pick is written on the book
+    if(!b.fontPick||!FONT_POOL.includes(b.fontPick)){b.fontPick=FONT_POOL[(bookSeed(b)>>>3)%FONT_POOL.length];DB.put('books',b).then(()=>markDirty()).catch(()=>{});}return b.fontPick;}
+  return S.font||'mincho';}
 function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFONTS.some(w=>w[0]===f);if(!web&&f!=='gothic')f='mincho';const changed=f!==fontNowV;fontNowV=f;
   if(!web){d.dataset.font=f;d.style.removeProperty('--read-font');clearTimeout(fontWarnT);return changed;}
   d.dataset.font='web';d.style.setProperty('--read-font',`"${f}",${/Gothic|Maru/.test(f)?'var(--gothic)':'var(--mincho)'}`);
@@ -523,7 +526,7 @@ function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFON
   return changed;}
 // a font that arrives after the page was laid out can move line ends: lay the text out again, without moving the place
 try{document.fonts.addEventListener('loadingdone',()=>{clearTimeout(fontT);fontT=setTimeout(()=>{if(fontNowV&&document.documentElement.dataset.font==='web'&&!readerEl.hidden&&R.book&&!R.busy)relayout();},300);});}catch(e){}
-{const fs=$('#fontSel');fs.append(h('option',{value:'mincho'},'明朝'),h('option',{value:'gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0]},w[1])));fs.onchange=()=>{S.font=fs.value;saveSettings();applySettings();relayout();};}
+{const fs=$('#fontSel');fs.append(h('option',{value:'*'},'本ごとにおまかせ'),h('option',{value:'mincho'},'明朝'),h('option',{value:'gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0]},w[1])));fs.onchange=()=>{if(fs.value==='*')S.fontAuto=true;else{S.fontAuto=false;S.font=fs.value;}saveSettings();applySettings();relayout();if(typeof Phys!=='undefined')setTimeout(()=>Phys.ui(),0);};}
 
 /* ---------- zip + epub ---------- */
 async function unzip(buf){
@@ -607,7 +610,7 @@ async function importEpub(file){
   // the same book again (same title, author and length): leave the shelf as it is
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
-  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;if(p.paper)book.paper=p.paper;if(p.font)book.font=p.font;pend.splice(pi,1);LS.set('pending',pend);}
+  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;if(p.paper)book.paper=p.paper;if(p.font)book.font=p.font;if(p.fontPick)book.fontPick=p.fontPick;pend.splice(pi,1);LS.set('pending',pend);}
   if(!book.folder){const f=shelfFor(book.title);if(f){book.folder=f;const fl=LS.get('folders',[]);if(!fl.includes(f)){fl.push(f);LS.set('folders',fl);}}} // a book on the genre list goes straight to its folder
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
@@ -801,7 +804,7 @@ function startStudy(queue){
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),
-    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined})),vocab:await DB.all('vocab'),
+    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined})),vocab:await DB.all('vocab'),
     summaries:await loadSums(),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
@@ -812,7 +815,7 @@ async function exportBackup(){const data=JSON.stringify(await makeBackup()),name
 async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
-  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;await DB.put('books',b);nb++;}else pending.push(p);}
+  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;if(p.fontPick&&!b.fontPick)b.fontPick=p.fontPick;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
@@ -2030,12 +2033,11 @@ var Phys=(()=>{
     const m=$('#physMore');if(!m)return;m.textContent='';m.hidden=!P.on;if(!P.on)return;const b=R.book,d=isDark(),slot=d?'d':'l';
     if(b){const cur=(b.paper&&b.paper[slot])||'',auto=STOCKS.filter(s=>!!s.dark===d)[bookSeed(b)%5];
       m.append(h('div',{class:'pr'},h('span',null,'この本の紙'),h('select',{'aria-label':'この本の紙',onchange:async e=>{b.paper=Object.assign({},b.paper,{[slot]:e.target.value});await DB.put('books',b);markDirty();apply();}},h('option',{value:''},`おまかせ（${auto.name}）`),...STOCKS.filter(s=>!!s.dark===d).map(s=>h('option',{value:s.id,selected:cur===s.id},s.name)))));
-      m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])))));}
+      m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},S.fontAuto!==false?`おまかせ（${b.fontPick==='mincho'||!b.fontPick?'明朝':(WEBFONTS.find(w=>w[0]===b.fontPick)||['','明朝'])[1]}）`:'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])))));}
     const box=h('div',{class:'chk'});
     const mk=(key,label,get,set)=>{const inp=h('input',{type:'checkbox'});inp.checked=!!get();inp.onchange=()=>set(inp.checked,inp);box.append(h('label',null,inp,label));};
     for(const [k,label] of FEATS)mk(k,label,()=>P[k],(on,inp)=>{if(k==='photo'&&on&&!photo){loadPhoto().then(im=>{if(im){P.photo=true;saveSettings();texKey='';apply();}else{inp.checked=false;pick.click();}});return;}
       P[k]=on;saveSettings();if(k==='tilt'&&on)tilt();if(k==='sound'&&on)wake();if(k==='pencil')setTimeout(drawInk,0);apply();});
-    mk('fontAuto','本ごとに書体も変える',()=>S.fontAuto,on=>{S.fontAuto=on;saveSettings();apply();});
     const pick=h('input',{type:'file',accept:'image/*',hidden:'',onchange:e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const u=URL.createObjectURL(f),im=new Image();
       im.onload=async()=>{const s=Math.min(1,768/Math.max(im.width,im.height)),c=cv(im.width*s,im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);const url=c.toDataURL('image/jpeg',.86);await DB.put('kv',{id:'paperImg',url});photoP=null;photo=null;await loadPhoto();photoV++;P.photo=true;saveSettings();apply();ui();toast('この写真を紙の質感に使います');};im.onerror=()=>toast('画像を読み込めませんでした');im.src=u;}});
     m.append(box,pick,h('div',{class:'pr'},h('span',null,'紙の写真'),h('button',{class:'ghost',onclick:()=>pick.click()},'写真を選ぶ')),
@@ -2052,7 +2054,7 @@ var Phys=(()=>{
   try{new ResizeObserver(()=>{if(active)req();}).observe(flow);}catch(e){}
   document.addEventListener('visibilitychange',()=>{if(document.hidden)hush();});
   ui();
-  return {apply,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad,pieces:LAY.map(l=>l.map.size)})};
+  return {apply,ui,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad,pieces:LAY.map(l=>l.map.size)})};
 })();
 /* ===== END PHYSICAL ===== */
 
