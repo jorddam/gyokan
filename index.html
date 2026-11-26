@@ -525,7 +525,14 @@ function bookSeed(b){let x=2166136261;const s=(b.title||'')+'|'+(b.author||'');f
 function fontFor(){const b=R.book&&!readerEl.hidden?R.book:null;if(b&&b.font)return b.font;if(b&&S.fontAuto!==false){ // each book gets one of the text faces, drawn by lot from its title and author, and keeps it: the pick is written on the book
     if(!b.fontPick||!FONT_POOL.includes(b.fontPick)){b.fontPick=FONT_POOL[(bookSeed(b)>>>3)%FONT_POOL.length];DB.put('books',b).then(()=>markDirty()).catch(()=>{});}return b.fontPick;}
   return S.font||'mincho';}
-function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFONTS.some(w=>w[0]===f);if(!web&&f!=='gothic')f='mincho';const changed=f!==fontNowV;fontNowV=f;
+// Fonts added from a file (ones you own). The file is stored in this device's database and nowhere else: it is not in the backup, the sync file or the app's repository.
+const USERFONTS=LS.get('userFonts',[]);
+async function loadUserFonts(){for(const n of USERFONTS){try{const r=await DB.get('kv','font:'+n);if(r&&r.buf){const f=new FontFace(n,r.buf);await f.load();document.fonts.add(f);}}catch(e){}}}
+async function addUserFont(file){const name=file.name.replace(/\.[^.]+$/,'').replace(/["'\\,;]/g,' ').trim().slice(0,60)||'書体';const buf=await file.arrayBuffer();
+  const f=new FontFace(name,buf.slice(0));await f.load();document.fonts.add(f); // throws if the file is not a usable font
+  await DB.put('kv',{id:'font:'+name,buf});if(!USERFONTS.includes(name)){USERFONTS.push(name);LS.set('userFonts',USERFONTS);}return name;}
+function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFONTS.some(w=>w[0]===f),own=USERFONTS.includes(f);if(!web&&!own&&f!=='gothic')f='mincho';const changed=f!==fontNowV;fontNowV=f;
+  if(own){d.dataset.font='web';d.style.setProperty('--read-font',`"${f}",var(--mincho)`);clearTimeout(fontWarnT);return changed;}
   if(!web){d.dataset.font=f;d.style.removeProperty('--read-font');clearTimeout(fontWarnT);return changed;}
   d.dataset.font='web';d.style.setProperty('--read-font',`"${f}",${/Gothic|Maru/.test(f)?'var(--gothic)':'var(--mincho)'}`);
   if(!fontLinks.has(f)){fontLinks.add(f);document.head.append(h('link',{rel:'stylesheet',crossorigin:'anonymous',href:'https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+'&display=swap'}));}
@@ -534,7 +541,10 @@ function applyFont(){let f=fontFor();const d=document.documentElement,web=WEBFON
   return changed;}
 // a font that arrives after the page was laid out can move line ends: lay the text out again, without moving the place
 try{document.fonts.addEventListener('loadingdone',()=>{clearTimeout(fontT);fontT=setTimeout(()=>{if(fontNowV&&document.documentElement.dataset.font==='web'&&!readerEl.hidden&&R.book&&!R.busy)relayout();},300);});}catch(e){}
-{const fs=$('#fontSel');fs.append(h('option',{value:'*'},'本ごとにおまかせ'),h('option',{value:'mincho'},'明朝'),h('option',{value:'gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0]},w[1])));fs.onchange=()=>{if(fs.value==='*')S.fontAuto=true;else{S.fontAuto=false;S.font=fs.value;}saveSettings();applySettings();relayout();if(typeof Phys!=='undefined')setTimeout(()=>Phys.ui(),0);};}
+{const fs=$('#fontSel');fs.append(h('option',{value:'*'},'本ごとにおまかせ'),h('option',{value:'mincho'},'明朝'),h('option',{value:'gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0]},w[1])),...USERFONTS.map(n=>h('option',{value:n},n)),h('option',{value:'+'},'＋ 書体ファイルを追加…'));
+  const pick=h('input',{type:'file',accept:'.otf,.ttf,.ttc,.woff,.woff2,font/*',hidden:''});document.body.append(pick);
+  pick.onchange=async()=>{const f=pick.files[0];pick.value='';if(!f)return;try{const had=USERFONTS.slice(),n=await addUserFont(f);if(!had.includes(n))fs.insertBefore(h('option',{value:n},n),fs.lastElementChild);S.fontAuto=false;S.font=n;saveSettings();applySettings();relayout();toast(`「${n}」を追加しました（この端末だけに保存されます）`,4200);}catch(e){toast('この書体ファイルは読み込めませんでした',4200);applySettings();}};
+  fs.onchange=()=>{if(fs.value==='+'){applySettings();pick.click();return;}if(fs.value==='*')S.fontAuto=true;else{S.fontAuto=false;S.font=fs.value;}saveSettings();applySettings();relayout();if(typeof Phys!=='undefined')setTimeout(()=>Phys.ui(),0);};}
 
 /* ---------- zip + epub ---------- */
 async function unzip(buf){
@@ -979,6 +989,9 @@ const R={book:null,content:null,ch:0,page:0,pages:[],lines:[],nodes:[],text:'',u
 const rg=document.createRange();
 const BLOCKS='p,div,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,dt,dd,figcaption,pre,section,article,aside,figure';
 const isV=()=>R.book.vertical;
+// the box the text sits in. In scroll mode the scrolling element is padded out to the edge of the screen across the lines, so that a
+// finger in those margins scrolls it the same way as a finger on the text; this gives the text's own box, without that padding.
+function vrect(){const r=viewport.getBoundingClientRect(),p=R.vpad||0;if(!p)return r;const v=R.book&&isV(),l=r.left+(v?0:p),t=r.top+(v?p:0),w=r.width-(v?0:2*p),hh=r.height-(v?2*p:0);return {left:l,top:t,width:w,height:hh,right:l+w,bottom:t+hh,x:l,y:t};}
 function geometry(){
   const fs=S.size,L=Math.round(fs*1.9),v=isV(),cs=getComputedStyle(document.documentElement);
   const px=n=>parseFloat(cs.getPropertyValue(n))||0;
@@ -989,13 +1002,14 @@ function geometry(){
   else{W=Math.min(vw-2*padX,fs*36);H=Math.max(L*4,Math.floor((vh-2*padY-2*mg)/L)*L);}
   R.L=L;R.B=v?W:H;
   const d=document.documentElement.style;d.setProperty('--fs',fs+'px');d.setProperty('--L',L+'px');d.setProperty('--inl',(v?H:W)+'px');d.setProperty('--blk',(v?W:H)+'px');
+  R.vpad=S.scroll?Math.max(0,Math.floor(((v?vh-H:vw-W))/2)):0;viewport.style.boxSizing='content-box';viewport.style.padding=R.vpad?(v?`${R.vpad}px 0`:`0 ${R.vpad}px`):'0';
   viewport.style.width=W+'px';viewport.style.height=H+'px';flow.className=v?'v':'h';
   const sc=!!S.scroll;viewport.classList.toggle('scroll',sc);viewport.classList.toggle('v',v);viewport.classList.toggle('h',!v);readerEl.classList.toggle('scrolling',sc);
   if(sc){flow.style.transform='none';viewport.style.clipPath='none';}else{viewport.scrollLeft=0;viewport.scrollTop=0;}
   $('#navPrev').hidden=!(sc&&R.ch>0);$('#navNext').hidden=!(sc&&R.book&&R.ch<R.book.chapters.length-1);
 }
 /* scroll mode keeps one "page": the stretch of text now in view. The rest of the reader (lookups, ink, progress) reads that window. */
-function winC0(){const fr=flow.getBoundingClientRect(),vr=viewport.getBoundingClientRect();return isV()?fr.right-vr.right:vr.top-fr.top;}
+function winC0(){const fr=flow.getBoundingClientRect(),vr=vrect();return isV()?fr.right-vr.right:vr.top-fr.top;}
 function syncWindow(){const c=Math.max(0,winC0());R.pages=[{s:c,e:c+R.B,first:0}];R.page=0;}
 function scrollToC(c){R.progAt=Date.now();const d=Math.max(0,c)-winC0();if(isV())viewport.scrollBy(-d,0);else viewport.scrollBy(0,d);syncWindow();closeDict();closeSel();hud();drawInk();saveSoon();}
 function goOff(off){if(!S.scroll){show(pageOfOffset(off));return;}const c=off<=0?0:centerAt(off);scrollToC(c==null?R.extent:c-R.L/2);}
@@ -1122,7 +1136,7 @@ function placeReadMarks(){
     if(done[e])for(const x of m.blocks)x.classList.add('rd-done');
     if(b&&b!==flow&&b.contains(nd)&&!b.querySelector(BLOCKS))b.append(m);else nd.after(m);start=e;from=q+1;}
 }
-function readMarkAt(x,y){const vr=viewport.getBoundingClientRect();for(const m of flow.querySelectorAll('.rd')){const r=m.getBoundingClientRect();if(r.width<1||r.right<vr.left||r.left>vr.right||r.bottom<vr.top||r.top>vr.bottom)continue;const px=isV()?6:14,py=isV()?14:6;if(x>=r.left-px&&x<=r.right+px&&y>=r.top-py&&y<=r.bottom+py)return m;}return null;}
+function readMarkAt(x,y){const vr=vrect();for(const m of flow.querySelectorAll('.rd')){const r=m.getBoundingClientRect();if(r.width<1||r.right<vr.left||r.left>vr.right||r.bottom<vr.top||r.top>vr.bottom)continue;const px=isV()?6:14,py=isV()?14:6;if(x>=r.left-px&&x<=r.right+px&&y>=r.top-py&&y<=r.bottom+py)return m;}return null;}
 function toggleRead(m){const b=R.book,e=+m.dataset.e,n=e-(+m.dataset.s),log=LS.get('readlog',{});b.read=b.read||{};const c=b.read[R.ch]=b.read[R.ch]||{};
   if(c[e]){const d=c[e][0];log[d]=Math.max(0,(log[d]||0)-c[e][1]);if(!log[d])delete log[d];delete c[e];m.setAttribute('aria-pressed','false');for(const x of m.blocks||[])x.classList.remove('rd-done');}
   else{const d=todayStr();c[e]=[d,n,Date.now()];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
@@ -1277,7 +1291,7 @@ function strokePts(st){if(st.v!==isV())return null;const r=charRect(st.a);if(!r)
   const [a,b]=coords(flow.getBoundingClientRect(),r),c=(a+b)/2,p=R.pages[R.page],m=S.scroll?R.B*.5:0;if(c<p.s-1-m||c>=p.e+m)return null;
   const cx=r.left+r.width/2,cy=r.top+r.height/2,fs=S.size;return st.p.map(q=>st.v?[cx-q[0]*fs,cy+q[1]*fs,q[2]]:[cx+q[1]*fs,cy+q[0]*fs,q[2]]);}
 function drawInk(){ictx.clearRect(0,0,innerWidth,innerHeight);R.vis=[];if(!R.ink||!R.book||readerEl.hidden)return;const col=inkColor();
-  if(S.scroll){const vr=viewport.getBoundingClientRect();ictx.save();ictx.beginPath();if(isV())ictx.rect(vr.left,0,vr.width,innerHeight);else ictx.rect(0,vr.top,innerWidth,vr.height);ictx.clip();}
+  if(S.scroll){const vr=vrect();ictx.save();ictx.beginPath();if(isV())ictx.rect(vr.left,0,vr.width,innerHeight);else ictx.rect(0,vr.top,innerWidth,vr.height);ictx.clip();}
   for(const st of R.ink.strokes){const pts=strokePts(st);if(pts){R.vis.push({st,pts});paint(ictx,pts,col,S.size);}}
   if(typeof Phys!=='undefined')Phys.tooth(ictx); // physical: the paper's tooth shows through pencil
   if(S.scroll)ictx.restore();}
@@ -1745,7 +1759,7 @@ async function indexChapter(){
 function charRect(g){const i=nodeAt(g),nd=R.nodes[i];if(!nd)return null;const m=g-nd.off;if(m<0||m>=nd.len)return null;rg.setStart(nd.n,m);rg.setEnd(nd.n,m+1);const r=rg.getBoundingClientRect();return r.width<1||r.height<1?null:r;}
 // which character is under the finger: find the line, then search along it (taps on furigana land on the word beside them)
 function hitChar(x,y){
-  if(!R.text)return null;const vr=viewport.getBoundingClientRect();if(x<vr.left||x>vr.right||y<vr.top||y>vr.bottom)return null;
+  if(!R.text)return null;const vr=vrect();if(x<vr.left||x>vr.right||y<vr.top||y>vr.bottom)return null;
   const fr=flow.getBoundingClientRect(),v=isV(),c=v?fr.right-x:y-fr.top,p=R.pages[R.page];if(c<p.s-4||c>p.e+1)return null;
   const ln=R.lines.find(l=>c>=l.a&&c<l.b);if(!ln)return null;
   let lo=firstAtOrAfter(ln.a-1),hi=firstAtOrAfter(ln.b-1)-1;if(centerAt(hi+1)!=null&&centerAt(hi+1)<ln.b-1)hi++;if(hi<lo)return null;
@@ -1968,7 +1982,7 @@ var Phys=(()=>{
 
   /* --- marks that belong to one place in one book: always the same spot in the same chapter --- */
   let inSpots=[];const clearSpots=()=>{spots.textContent='';for(const e of inSpots)e.remove();inSpots=[];};
-  function buildSpots(){clearSpots();if(!P.spots)return;const v=isV(),inside=!!S.scroll,k=inside?scrollPos()-winC0():0,vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),fr=flow.getBoundingClientRect(),ext=R.extent||(v?fr.width:fr.height),cross=v?rr.height:rr.width;
+  function buildSpots(){clearSpots();if(!P.spots)return;const v=isV(),inside=!!S.scroll,k=inside?scrollPos()-winC0():0,vr=vrect(),rr=readerEl.getBoundingClientRect(),fr=flow.getBoundingClientRect(),ext=R.extent||(v?fr.width:fr.height),cross=v?rr.height:rr.width;
     const n=Math.min(60,Math.round(ext/2400)),r=rng(seed^Math.imul(R.ch+1,7919)),fox=isDark()?[205,175,125]:[150,100,40],dk=isDark()?.5:1;
     for(let i=0;i<n;i++){const p=r()*ext,q=r()*cross,t=r(),el=h('i');let w,hh,st='';
       if(t<.5){w=hh=4+r()*15;st=`border-radius:50%;background:radial-gradient(closest-side,${rgba(fox,(.12+r()*.2)*dk)},${rgba(fox,0)})`;}
@@ -1976,12 +1990,12 @@ var Phys=(()=>{
       else if(t<.9){w=42+r()*90;hh=w*(.7+r()*.5);st=`border-radius:47% 53% 55% 45%/50% 44% 56% 50%;border:1px solid ${rgba(fox,.11*dk)};background:radial-gradient(closest-side,transparent 62%,${rgba(fox,.07*dk)})`;}
       else{if(v){w=1;hh=cross*(.3+r()*.5);}else{hh=1;w=cross*(.3+r()*.5);}st=`background:rgba(0,0,0,${isDark()?.3:.13});box-shadow:${v?'1px 0':'0 1px'} 0 rgba(255,255,255,${isDark()?.05:.35})`;}
       if(inside){const qq=q*(v?vr.height:vr.width)/cross;if(!v&&w>vr.width)w=vr.width;if(v&&hh>vr.height)hh=vr.height;el.className='ph-spot';
-        el.style.cssText=(v?`right:${(k+p-w/2).toFixed(1)}px;top:${clamp(qq-hh/2,0,vr.height-hh).toFixed(1)}px;`:`top:${(k+p-hh/2).toFixed(1)}px;left:${clamp(qq-w/2,0,vr.width-w).toFixed(1)}px;`)+`width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;viewport.append(el);inSpots.push(el);continue;}
+        el.style.cssText=(v?`right:${(k+p-w/2).toFixed(1)}px;top:${((R.vpad||0)+clamp(qq-hh/2,0,vr.height-hh)).toFixed(1)}px;`:`top:${(k+p-hh/2).toFixed(1)}px;left:${((R.vpad||0)+clamp(qq-w/2,0,vr.width-w)).toFixed(1)}px;`)+`width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;viewport.append(el);inSpots.push(el);continue;}
       const L=v?vr.right-rr.left-p-w/2:q-w/2,T=v?q-hh/2:vr.top-rr.top+p-hh/2;el.style.cssText=`left:${L.toFixed(1)}px;top:${T.toFixed(1)}px;width:${w.toFixed(1)}px;height:${hh.toFixed(1)}px;${st}`;spots.append(el);}}
   /* --- show-through: the other side of the leaf, mirrored and very faint, on the same line pitch as the text --- */
   let ghostKey='';
   function buildGhost(){const on=P.ghost&&R.text&&R.text.length>200;ghost.classList.toggle('ph-off',!on);if(!on){gw=gh=0;ghostKey='';retile(LAY[2]);return;}
-    const v=isV(),L=R.L,fs=S.size,vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect(),inl=v?vr.height:vr.width,fam=getComputedStyle(flow).fontFamily;
+    const v=isV(),L=R.L,fs=S.size,vr=vrect(),rr=readerEl.getBoundingClientRect(),inl=v?vr.height:vr.width,fam=getComputedStyle(flow).fontFamily;
     const key=[R.book.id,R.ch,v,L,fs,Math.round(inl),fam,stock.id].join('|');
     if(key!==ghostKey){ghostKey=key;const lines=14,per=Math.max(4,Math.floor(inl/fs)),c=cv(v?lines*L:inl,v?inl:lines*L),x=c.getContext('2d'),txt=R.text.replace(/\s+/g,''),r=rng(seed^(R.ch*31+5)),start=Math.floor(r()*Math.max(1,txt.length-lines*per));
       x.font=`${fs}px ${fam}`;x.textAlign='center';x.textBaseline='middle';x.fillStyle=stock.ink;x.globalAlpha=(isDark()?.055:.08)/2.2;x.translate(c.width,0);x.scale(-1,1);
@@ -2004,7 +2018,7 @@ var Phys=(()=>{
     {box:tex,on:()=>P.grain,map:new Map(),dress(el,at,v,W,H){const b=hdOn?(v?`${mod(hdX-at,HS)}px ${hdY}px,${mod(-at,1024)}px 0`:`${hdX}px ${mod(hdY-at,HS)}px,0 ${mod(-at,1024)}px`):(v?`${mod(-at,TS)}px 0`:`0 ${mod(-at,TS)}px`);
       el.style.cssText=(v?`left:${at}px;top:0;width:${CW+2}px;height:${H}px;`:`top:${at}px;left:0;height:${CW+2}px;width:${W}px;`)+`background-position:${b}`;}}, // two points of overlap: no hairline between neighbours
     {box:inkv,on:()=>P.ink,map:new Map(),dress(el,at,v,W,H){el.style.cssText=v?`left:${at}px;top:0;width:${CW/2}px;height:${Math.ceil(H/2)}px;background-position:${mod(-at/2,IS/2)}px 0`:`top:${at}px;left:0;height:${CW/2}px;width:${Math.ceil(W/2)}px;background-position:0 ${mod(-at/2,IS/2)}px`;}}, // drawn at half size and doubled: the patches are soft anyway
-    {box:ghost,on:()=>gw>0,map:new Map(),dress(el,at,v){const vr=viewport.getBoundingClientRect(),rr=readerEl.getBoundingClientRect();
+    {box:ghost,on:()=>gw>0,map:new Map(),dress(el,at,v){const vr=vrect(),rr=readerEl.getBoundingClientRect();
       el.style.cssText=v?`left:${at}px;top:${vr.top-rr.top}px;width:${CW}px;height:${vr.height}px;background-size:${gw}px ${gh}px;background-repeat:repeat-x;background-position:${mod(vr.right-rr.left-at,gw)}px 0`
         :`top:${at}px;left:${vr.left-rr.left}px;height:${CW}px;width:${vr.width}px;background-size:${gw}px ${gh}px;background-repeat:repeat-y;background-position:0 ${mod(vr.top-rr.top-at,gh)}px`;}}];
   let tileKey='';
@@ -2079,7 +2093,7 @@ var Phys=(()=>{
     if(b){const cur=(b.paper&&b.paper[slot])||'',auto=STOCKS.filter(s=>!!s.dark===d)[bookSeed(b)%5];
       m.append(h('div',{class:'pr'},h('span',null,'この本の紙'),h('select',{'aria-label':'この本の紙',onchange:async e=>{b.paper=Object.assign({},b.paper,{[slot]:e.target.value});await DB.put('books',b);markDirty();apply();}},h('option',{value:''},`おまかせ（${auto.name}）`),...STOCKS.filter(s=>!!s.dark===d).map(s=>h('option',{value:s.id,selected:cur===s.id},s.name)))));
       if(P.hd)m.append(h('div',{class:'pr'},h('span',null,'この本の紙目'),h('select',{'aria-label':'この本の紙目',onchange:async e=>{b.sheet=+e.target.value||0;await DB.put('books',b);markDirty();apply();}},h('option',{value:'0'},`おまかせ（${HDN[(bookSeed(b)>>>7)%HDN.length]}）`),...HDN.map((n,i)=>h('option',{value:String(i+1),selected:b.sheet===i+1},n)))));
-      m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},S.fontAuto!==false?`おまかせ（${b.fontPick==='mincho'||!b.fontPick?'明朝':(WEBFONTS.find(w=>w[0]===b.fontPick)||['','明朝'])[1]}）`:'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])))));}
+      m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},S.fontAuto!==false?`おまかせ（${b.fontPick==='mincho'||!b.fontPick?'明朝':(WEBFONTS.find(w=>w[0]===b.fontPick)||['','明朝'])[1]}）`:'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])),...USERFONTS.map(n=>h('option',{value:n,selected:b.font===n},n)))));}
     const box=h('div',{class:'chk'});
     const mk=(key,label,get,set)=>{const inp=h('input',{type:'checkbox'});inp.checked=!!get();inp.onchange=()=>set(inp.checked,inp);box.append(h('label',null,inp,label));};
     for(const [k,label] of FEATS)mk(k,label,()=>P[k],(on,inp)=>{if(k==='photo'&&on&&!photo){loadPhoto().then(im=>{if(im){P.photo=true;saveSettings();texKey='';apply();}else{inp.checked=false;pick.click();}});return;}
@@ -2169,7 +2183,7 @@ const Music=(()=>{
 /* ===== END MUSIC ===== */
 
 /* ---------- start ---------- */
-(async()=>{applySettings();addIcons($('#aa'));await DB.open();await loadKnown();
+(async()=>{applySettings();addIcons($('#aa'));await DB.open();await loadKnown();loadUserFonts().then(()=>{if(USERFONTS.length){applyFont();if(!readerEl.hidden)relayout();}});
   LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
   await renderHome();
   if(syncCfg()){syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{});loadShelves().catch(()=>{});}
