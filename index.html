@@ -285,6 +285,14 @@ body.drag #home{outline:2px dashed var(--accent);outline-offset:-14px}
 .card .src{font-size:.78rem;color:var(--mute);text-decoration:underline;text-underline-offset:3px;margin-top:12px}
 .card .btns{display:flex;gap:14px}
 .card .btns button{min-width:128px;padding:13px 22px;border-radius:999px;font-weight:600;font-size:.98rem;border:1px solid var(--line)}
+#study .card{overflow:auto}
+.card .btns.four{gap:8px;flex-wrap:wrap;justify-content:center}
+.card .btns.four button{min-width:104px;padding:10px 14px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.card .btns small{font-weight:400;font-size:.72rem;opacity:.75}
+.card .exs{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);text-align:left;max-width:34em}
+.card .exs p{font-family:var(--mincho);font-size:1.08rem;line-height:1.85;margin:0 0 8px}
+.card .exs i{font-style:normal;font-family:var(--gothic);font-size:.68rem;border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-right:8px;color:var(--mute);vertical-align:middle}
+.card .exs small{color:var(--mute);font-size:.7rem}
 .card .btns .go{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 #nudge{position:absolute;left:50%;bottom:calc(var(--sab) + 40px);transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 8px 8px 20px;box-shadow:0 18px 40px -18px rgba(0,0,0,.55);z-index:12;font-size:.9rem;max-width:92vw;white-space:nowrap}
 #selbar{position:absolute;left:50%;bottom:calc(var(--sab) + 40px);transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px;box-shadow:0 18px 40px -18px rgba(0,0,0,.55);z-index:13;font-size:.88rem;white-space:nowrap}
@@ -772,30 +780,61 @@ async function renderQuotes(root,books){
 const DAY=86400000,dayStart=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime();};
 const markSent=v=>{const p=h('p',{class:'sent'});p.append(v.sent.slice(0,v.ws),h('mark',null,v.sent.slice(v.ws,v.we)),v.sent.slice(v.we));return p;};
 async function openSource(v){const b=await DB.get('books',v.bookId);if(!b){toast('この本は本棚にありません');return;}b.pos={ch:v.ch,off:v.off};await DB.put('books',b);$('#study').hidden=true;openBook(b.id);}
+/* ---------- word review: spaced repetition ----------
+   Each word carries an interval and an ease. Four answers: again (back into this session), hard, good, easy.
+   A day's session is capped (reviews and new words); what is over the cap simply waits, and no backlog is shown.
+   Example sentences come from a pack kept with the app (open corpus, no AI), looked up by the word's dictionary form. */
+const SRS={rev:20,fresh:5};
+const srsDay=()=>{const t=todayStr(),d=LS.get('srsDay',null);return d&&d.day===t?d:{day:t,rev:0,fresh:0};};
+const srsNew=v=>!(v.reps>0)&&!v.last;
+function srsPick(all){const now=Date.now(),d=srsDay();
+  const rev=all.filter(v=>!srsNew(v)&&v.due<=now).sort((a,b)=>a.due-b.due).slice(0,Math.max(0,SRS.rev-d.rev));
+  const fresh=all.filter(srsNew).sort((a,b)=>a.added-b.added).slice(0,Math.max(0,SRS.fresh-d.fresh));
+  return rev.concat(fresh);}
+// what an answer would do to a word (returned, not stored), so the buttons can say how long until it comes back
+function srsNext(v,g){let e=v.ease||2.5,ivl=v.ivl||0;const first=!(v.reps>0);
+  if(g===0)return {ease:Math.max(1.3,+(e-.2).toFixed(2)),ivl:0,again:true};
+  if(first||ivl<1)ivl=g===1?1:g===2?(v.lap?1:2):4;else ivl=g===1?Math.max(ivl+1,ivl*1.2):g===2?ivl*e:ivl*e*1.3;
+  if(g===1)e=Math.max(1.3,e-.15);if(g===3)e=Math.min(3,e+.15);
+  return {ease:+e.toFixed(2),ivl:Math.min(365,Math.max(1,Math.round(ivl)))};}
+function srsApply(v,g){const n=srsNext(v,g),now=Date.now();v.ease=n.ease;v.last=now;
+  if(n.again){if(v.reps>0)v.lap=(v.lap||0)+1;v.reps=0;v.ivl=0;v.due=now;}
+  else{v.ivl=n.ivl;v.reps=(v.reps||0)+1;v.due=dayStart(now)+n.ivl*DAY;}}
+const span=d=>d<1?'すぐ':d<30?`${d}日`:d<365?`${Math.round(d/30)}か月`:'1年';
+let exPack=null,exP=null;
+function loadExamples(){return exP||(exP=fetch('examples.1.bin').then(r=>{if(!r.ok)throw 0;return r.json();}).then(p=>{exPack=p;return p;}).catch(()=>{exP=null;return null;}));}
+function examplesFor(v,n=2){if(!exPack)return [];const ids=exPack.i[v.word]||(v.key&&exPack.i[v.key])||[];if(!ids.length)return [];
+  const hard=ids.filter(k=>exPack.s[k][1]>0),pool=hard.length?hard.concat(ids.filter(k=>exPack.s[k][1]===0)):ids,st=(v.reps||0)%pool.length,out=[]; // harder sentences first; a different one leads each time the word comes round
+  for(let k=0;k<Math.min(n,pool.length);k++){const x=exPack.s[pool[(st+k)%pool.length]];out.push({t:x[0],lv:x[1]});}return out;}
 async function renderVocab(root){
-  const all=(await DB.all('vocab')).sort((a,b)=>b.added-a.added),now=Date.now(),due=all.filter(v=>v.due<=now);
-  root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'単語帳'),h('p',null,all.length?(S.simple?`${all.length}語`:`${all.length}語　今日の復習 ${due.length}語`):'読書中に単語を押して「単語帳に追加」を選ぶと、ここにたまります。')),
-    all.length&&!S.simple?h('button',{class:'add',disabled:!due.length,onclick:()=>startStudy(due)},due.length?`復習する（${due.length}）`:'今日の復習はありません'):null));
+  const all=(await DB.all('vocab')).sort((a,b)=>b.added-a.added),now=Date.now(),todo=srsPick(all),d=srsDay(),didToday=d.rev+d.fresh;
+  root.append(h('div',{class:'vhead'},h('div',null,h('h2',null,'単語帳'),h('p',null,all.length?`${all.length}語`+(todo.length?`　今日の復習 ${todo.length}語`:didToday?`　今日は${didToday}語を復習しました`:''):'読書中に単語を押して「単語帳に追加」を選ぶと、ここにたまります。')),
+    all.length?h('button',{class:'add',disabled:!todo.length,onclick:()=>startStudy(todo)},todo.length?`復習する（${todo.length}）`:'今日の復習はありません'):null));
   if(!all.length)return;
   const ul=h('ul',{class:'words'});
   for(const v of all){const li=h('li');
-    const when=v.due<=now?'今日':`${Math.max(1,Math.round((dayStart(v.due)-dayStart(now))/DAY))}日後`;
+    const when=srsNew(v)?'新しい':v.due<=now?'今日':`${Math.max(1,Math.round((dayStart(v.due)-dayStart(now))/DAY))}日後`;
     li.append(h('button',{class:'row1',onclick:()=>{const x=li.querySelector('.more2');if(x){x.remove();return;}
-      li.append(h('div',{class:'more2'},markSent(v),h('div',{class:'acts'},h('button',{onclick:()=>openSource(v)},`『${v.book}』の本文を開く`),h('button',{onclick:async()=>{await DB.del('vocab',v.id);renderHome();}},'単語帳から外す'))));}},
-      h('span',null,h('span',{class:'w'},v.word),v.read?h('span',{class:'r'},v.read):null),h('span',{class:'g'},v.gloss),S.simple?null:h('span',{class:'d'},when)));
+      li.append(h('div',{class:'more2'},markSent(v),h('div',{class:'acts'},h('button',{onclick:()=>openSource(v)},`『${v.book}』の本文を開く`),h('button',{onclick:async()=>{await DB.del('vocab',v.id);markDirty();renderHome();}},'単語帳から外す'))));}},
+      h('span',null,h('span',{class:'w'},v.word),v.read?h('span',{class:'r'},v.read):null),h('span',{class:'g'},v.gloss),h('span',{class:'d'},when)));
     ul.append(li);}
   root.append(ul);
 }
 function startStudy(queue){
-  const el=$('#study');queue=queue.slice(0,40);let done=0;const total=queue.length;
+  const el=$('#study');queue=queue.slice();let done=0;const total=queue.length,wasNew=new Map(queue.map(v=>[v.id,srsNew(v)]));loadExamples();
   const finish=()=>{el.hidden=true;renderHome();};
   const next=()=>{el.textContent='';
     if(!queue.length){el.append(h('div',{class:'top'},h('span',null,''),h('button',{onclick:finish},'閉じる')),h('div',{class:'card'},h('p',{class:'sent'},'今日の復習は終わりです'),h('div',{class:'btns'},h('button',{class:'go',onclick:finish},'単語帳に戻る'))));return;}
     const v=queue[0],ans=h('div',{class:'ans'}),btns=h('div',{class:'btns'});
-    const grade=async good=>{if(good){v.reps=(v.reps||0)+1;v.ivl=v.reps===1?1:v.reps===2?3:Math.round((v.ivl||3)*2.4);v.due=dayStart(Date.now())+v.ivl*DAY;queue.shift();done++;}
-      else{v.reps=0;v.ivl=0;v.due=Date.now();queue.push(queue.shift());}await DB.put('vocab',v);next();};
-    const reveal=()=>{ans.append(h('div',{class:'w'},v.word),v.read?h('div',{class:'r'},v.read):null,h('div',{class:'g'},v.gloss),h('button',{class:'src',onclick:()=>openSource(v)},`『${v.book}』`));
-      btns.textContent='';btns.append(h('button',{onclick:()=>grade(false)},'まだ'),h('button',{class:'go',onclick:()=>grade(true)},'覚えた'));};
+    const grade=async g=>{srsApply(v,g);
+      if(g===0)queue.push(queue.shift());
+      else{queue.shift();done++;const d=srsDay();if(wasNew.get(v.id))d.fresh++;else d.rev++;LS.set('srsDay',d);}
+      await DB.put('vocab',v);markDirty();next();};
+    const reveal=async()=>{ans.append(h('div',{class:'w'},v.word),v.read?h('div',{class:'r'},v.read):null,h('div',{class:'g'},v.gloss),h('button',{class:'src',onclick:()=>openSource(v)},`『${v.book}』`));
+      btns.textContent='';btns.classList.add('four');
+      for(const [g,label] of [[0,'もう一度'],[1,'むずかしい'],[2,'できた'],[3,'かんたん']]){const n=srsNext(v,g);btns.append(h('button',{class:g===2?'go':null,onclick:()=>grade(g)},label,h('small',null,span(n.ivl))));}
+      await loadExamples();if(queue[0]!==v)return;const ex=examplesFor(v);
+      if(ex.length)ans.append(h('div',{class:'exs'},...ex.map(x=>h('p',null,x.lv?h('i',null,x.lv===1?'N1':'N2'):null,x.t)),h('small',null,exPack.src)));};
     btns.append(h('button',{class:'go',onclick:reveal},'答えを見る'));
     el.append(h('div',{class:'top'},h('span',null,`${done} / ${total}`),h('button',{onclick:finish},'やめる')),h('div',{class:'card'},markSent(v),ans,btns));};
   el.hidden=false;next();
@@ -816,7 +855,7 @@ async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
   for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;if(p.fontPick&&!b.fontPick)b.fontPick=p.fontPick;if(p.sheet&&!b.sheet)b.sheet=p.sheet;await DB.put('books',b);nb++;}else pending.push(p);}
-  LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
+  LS.set('pending',pending);{const have=new Map((await DB.all('vocab')).map(v=>[v.id,v]));for(const v of data.vocab||[]){const m=have.get(v.id);if(!m||(v.last||0)>=(m.last||0))await DB.put('vocab',v);}} // a word reviewed more recently on this device keeps its own schedule
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=(await DB.all('books')).find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
