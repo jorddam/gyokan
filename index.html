@@ -610,7 +610,7 @@ async function importEpub(file){
   // the same book again (same title, author and length): leave the shelf as it is
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
-  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;if(p.paper)book.paper=p.paper;if(p.font)book.font=p.font;if(p.fontPick)book.fontPick=p.fontPick;pend.splice(pi,1);LS.set('pending',pend);}
+  if(pi>=0){const p=pend[pi];book.pos=p.pos;book.progress=p.progress||0;book.status=p.status||'reading';book.opened=p.opened||0;book.folder=p.folder||'';book.fav=!!p.fav;if(p.read)book.read=p.read;if(p.people)book.people=p.people;if(p.paper)book.paper=p.paper;if(p.font)book.font=p.font;if(p.fontPick)book.fontPick=p.fontPick;if(p.sheet)book.sheet=p.sheet;pend.splice(pi,1);LS.set('pending',pend);}
   if(!book.folder){const f=shelfFor(book.title);if(f){book.folder=f;const fl=LS.get('folders',[]);if(!fl.includes(f)){fl.push(f);LS.set('folders',fl);}}} // a book on the genre list goes straight to its folder
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
@@ -804,7 +804,7 @@ function startStudy(queue){
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
 async function makeBackup(){const books=await DB.all('books');
   return {app:'gyokan',v:1,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),
-    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined})),vocab:await DB.all('vocab'),
+    folders:LS.get('folders',[]),books:books.map(b=>({title:b.title,author:b.author,total:b.total,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined,sheet:b.sheet||undefined})),vocab:await DB.all('vocab'),
     summaries:await loadSums(),
     quotes:(await DB.all('quotes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
     notes:(await DB.all('notes')).map(n=>{const b=books.find(x=>x.id===n.bookId);return b?Object.assign({},n,{sig:{title:b.title,author:b.author,total:b.total}}):null;}).filter(Boolean),
@@ -815,7 +815,7 @@ async function exportBackup(){const data=JSON.stringify(await makeBackup()),name
 async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   const books=await DB.all('books'),pending=[];let nb=0;
-  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;if(p.fontPick&&!b.fontPick)b.fontPick=p.fontPick;await DB.put('books',b);nb++;}else pending.push(p);}
+  for(const p of data.books||[]){const b=books.find(x=>sameBook(x,p));if(b){if((p.opened||0)>=(b.opened||0)){b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status;b.opened=p.opened||b.opened;}if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;if(p.read)b.read=mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.paper&&!b.paper)b.paper=p.paper;if(p.font&&!b.font)b.font=p.font;if(p.fontPick&&!b.fontPick)b.fontPick=p.fontPick;if(p.sheet&&!b.sheet)b.sheet=p.sheet;await DB.put('books',b);nb++;}else pending.push(p);}
   LS.set('pending',pending);for(const v of data.vocab||[])await DB.put('vocab',v);
   for(const n of data.quotes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){const b=(await DB.all('books')).find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
@@ -1838,7 +1838,7 @@ var Phys=(()=>{
     {id:'washi',name:'和紙',dark:0,base:[241,238,228],ink:'#26221c',mott:.025,speck:.025,fib:460,fibc:[150,130,100],fa:.13,long:1},
     {id:'kosho',name:'古書',dark:0,base:[226,209,168],ink:'#3a2c18',mott:.06,speck:.045,fib:140,fibc:[110,70,30],fa:.1},
     {id:'joshitsu',name:'上質',dark:0,base:[244,240,231],ink:'#1e1e1c',mott:.015,speck:.02,fib:40,fibc:[100,100,100],fa:.05}];
-  const TS=512,IS=640,HS=2048,HM=4.2,HD='paper4k.1.bin',mod=(a,n)=>((a%n)+n)%n;
+  const TS=512,IS=640,HS=2048,HM=4.2,HDN=['標準','簀の目','綿','楮','ざら'],HDF=i=>`paper4k.${i+1}.bin`,mod=(a,n)=>((a%n)+n)%n;
   const rng=s=>{let a=s>>>0;return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};};
   const cv=(w,hh)=>{const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(hh));return c;};
   const rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
@@ -1909,12 +1909,14 @@ var Phys=(()=>{
     for(let k=0;k<3;k++){const y=20+r()*(N-50),hh=4+r()*9,g=x.createLinearGradient(0,y,0,y+hh);g.addColorStop(0,rgba(bs,0));g.addColorStop(.5,rgba(bs,.035+r()*.045));g.addColorStop(1,rgba(bs,0));x.fillStyle=g;x.fillRect(0,y,N,hh);} // faint roller bands
     return c.toDataURL();}
   // the 4K map is one file, fetched once and then kept by the app's offline store; until it is there the sheet is made the earlier way
-  let hdUrl='',hdState=0,hdOn=false,hdX=0,hdY=0;
-  function hdLoad(){if(hdState||!P.hd)return;hdState=1;fetch(HD).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(b=>{hdUrl=URL.createObjectURL(new Blob([b],{type:'image/jpeg'}));hdState=2;if(active)apply();}).catch(()=>{hdState=0;});}
-  function paper(){hdLoad();const hd=!!(P.hd&&hdState===2&&!(P.photo&&photo)),v=isV(),d=isDark();
-    const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1,hd,v].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
+  // five sheets, each a different make of paper at the same strength; a book is given one by lot and keeps it (or the one chosen for it)
+  const hdUrls=[],hdStates=[];let hdOn=false,hdX=0,hdY=0;
+  const sheetOf=b=>{const n=b&&b.sheet;return n>=1&&n<=HDN.length?n-1:(bookSeed(b)>>>7)%HDN.length;};
+  function hdLoad(i){if(hdStates[i]||!P.hd)return;hdStates[i]=1;fetch(HDF(i)).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(b=>{hdUrls[i]=URL.createObjectURL(new Blob([b],{type:'image/jpeg'}));hdStates[i]=2;if(active)apply();}).catch(()=>{hdStates[i]=0;});}
+  function paper(){const si=sheetOf(R.book);hdLoad(si);const hd=!!(P.hd&&hdStates[si]===2&&!(P.photo&&photo)),v=isV(),d=isDark(),hdUrl=hdUrls[si];
+    const key=[stock.id,seed,P.photo&&photo?'p'+photoV:'',window.devicePixelRatio||1,hd,v,si].join('|');if(key===texKey)return;texKey=key;clearTimeout(texT);
     inkv.style.setProperty('--ph-ink',`url(${makeInk(base,seed)})`);
-    texT=setTimeout(()=>{const st=stock,bs=base,k=key,sd=seed;const c=makeTex(st,bs,sd,hd);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);
+    texT=setTimeout(()=>{const st=stock,bs=base,k=key,sd=seed^Math.imul(si+1,0x2545f491);const c=makeTex(st,bs,seed,hd);c.toBlob(bl=>{if(!bl||k!==texKey)return;if(texUrl)URL.revokeObjectURL(texUrl);texUrl=URL.createObjectURL(bl);
       const ts=tex.style;hdOn=hd;
       if(hd){const r=rng(sd^0x4b1d);hdX=Math.floor(r()*HS);hdY=Math.floor(r()*HS); // each book looks at its own part of the sheet
         ts.setProperty('--ph-bi',`url(${hdUrl}),url(${texUrl})`);ts.setProperty('--ph-bs',`${HS}px ${HS}px,1024px 1024px`);ts.setProperty('--ph-bb',(d?'screen':'difference')+',normal');}
@@ -2033,6 +2035,7 @@ var Phys=(()=>{
     const m=$('#physMore');if(!m)return;m.textContent='';m.hidden=!P.on;if(!P.on)return;const b=R.book,d=isDark(),slot=d?'d':'l';
     if(b){const cur=(b.paper&&b.paper[slot])||'',auto=STOCKS.filter(s=>!!s.dark===d)[bookSeed(b)%5];
       m.append(h('div',{class:'pr'},h('span',null,'この本の紙'),h('select',{'aria-label':'この本の紙',onchange:async e=>{b.paper=Object.assign({},b.paper,{[slot]:e.target.value});await DB.put('books',b);markDirty();apply();}},h('option',{value:''},`おまかせ（${auto.name}）`),...STOCKS.filter(s=>!!s.dark===d).map(s=>h('option',{value:s.id,selected:cur===s.id},s.name)))));
+      if(P.hd)m.append(h('div',{class:'pr'},h('span',null,'この本の紙目'),h('select',{'aria-label':'この本の紙目',onchange:async e=>{b.sheet=+e.target.value||0;await DB.put('books',b);markDirty();apply();}},h('option',{value:'0'},`おまかせ（${HDN[(bookSeed(b)>>>7)%HDN.length]}）`),...HDN.map((n,i)=>h('option',{value:String(i+1),selected:b.sheet===i+1},n)))));
       m.append(h('div',{class:'pr'},h('span',null,'この本の書体'),h('select',{'aria-label':'この本の書体',onchange:async e=>{b.font=e.target.value;await DB.put('books',b);markDirty();apply();}},h('option',{value:''},S.fontAuto!==false?`おまかせ（${b.fontPick==='mincho'||!b.fontPick?'明朝':(WEBFONTS.find(w=>w[0]===b.fontPick)||['','明朝'])[1]}）`:'全体と同じ'),h('option',{value:'mincho',selected:b.font==='mincho'},'明朝'),h('option',{value:'gothic',selected:b.font==='gothic'},'ゴシック'),...WEBFONTS.map(w=>h('option',{value:w[0],selected:b.font===w[0]},w[1])))));}
     const box=h('div',{class:'chk'});
     const mk=(key,label,get,set)=>{const inp=h('input',{type:'checkbox'});inp.checked=!!get();inp.onchange=()=>set(inp.checked,inp);box.append(h('label',null,inp,label));};
@@ -2054,7 +2057,7 @@ var Phys=(()=>{
   try{new ResizeObserver(()=>{if(active)req();}).observe(flow);}catch(e){}
   document.addEventListener('visibilitychange',()=>{if(document.hidden)hush();});
   ui();
-  return {apply,ui,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad,pieces:LAY.map(l=>l.map.size)})};
+  return {apply,ui,sync,tooth,pencil:()=>active&&P.pencil?(isDark()?'rgba(228,224,214,.92)':'rgba(54,54,60,.92)'):'',state:()=>({sheet:R.book?sheetOf(R.book):null,active,stock:stock&&stock.id,base,seed,P,driven:!!tl,tlBad,pieces:LAY.map(l=>l.map.size)})};
 })();
 /* ===== END PHYSICAL ===== */
 
