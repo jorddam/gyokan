@@ -498,18 +498,21 @@ const DB={db:null,mem:{books:new Map(),content:new Map(),vocab:new Map(),ink:new
 };
 const S=Object.assign({size:20,theme:null,font:'mincho',pages:12,simple:false,scroll:false,furi:'auto',mg:0},(()=>{try{return JSON.parse(localStorage.getItem('gyokan.settings'))||{};}catch(e){return {};}})());S.simple=false; // the simple view is gone: one view, AI only when asked for
 if(!S.theme)S.theme=matchMedia('(prefers-color-scheme:dark)').matches?'sumi':'shiro';
-const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='log'||k==='folders'||k==='readlog'||k==='quizlog'||k==='gone'||k==='goneIds')markDirty();}};
+const LS={get(k,d){try{const v=localStorage.getItem('gyokan.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('gyokan.'+k,JSON.stringify(v));}catch(e){}if(k==='folders'&&!syncApplying)try{localStorage.setItem('gyokan.foldersAt',String(tick(localStorage.getItem('gyokan.foldersAt'))));}catch(e){}if(k==='log'||k==='folders'||k==='readlog'||k==='quizlog'||k==='gone'||k==='goneIds')markDirty();}};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // a book's position as one number: characters from the start of the book
 const bookG=b=>{let g=0;for(let i=0;i<b.pos.ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return g+(b.pos.off||0);};
 const sameBook=(a,b)=>a.title===b.title&&(a.author||'')===(b.author||'')&&a.total===b.total;
+const tick=prev=>Math.max(Date.now(),(+prev||0)+1);
 const sigStr=b=>`${b.title}\u0001${b.author||''}\u0001${b.total}`;
 // what travels with a book besides its text: where you are, and how it is kept and shown
 const META=['folder','fav','paper','font','fontPick','sheet'];
 const metaStr=b=>JSON.stringify(META.map(k=>b[k]||null));
 // bring a book's record up to what another device saved. Place follows whichever device read it last; shelf and paper settings follow whichever changed them last.
 function applyMeta(b,p,fresh){
-  if(fresh||(p.opened||0)>=(b.opened||0)){if(p.pos)b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status||'reading';b.opened=p.opened||b.opened||0;}
+  const at=x=>x.posAt!=null?x.posAt:(x.opened||0);
+  if(fresh||at(p)>at(b)){if(p.pos)b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status||'reading';if(p.posAt)b.posAt=p.posAt;else delete b.posAt;}
+  b.opened=Math.max(b.opened||0,p.opened||0);
   if(p.read)b.read=fresh?p.read:mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.pkg&&!b.pkg)b.pkg=p.pkg;
   if(fresh||(p.edited||0)>(b.edited||0)){for(const k of META)if(k==='fav')b.fav=!!p.fav;else if(p[k])b[k]=p[k];else delete b[k];if(p.edited)b.edited=p.edited;if(p.status&&(p.edited||0)>(b.opened||0))b.status=p.status;}
   else if(!(b.edited||0)&&!(p.edited||0)){if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;for(const k of ['paper','font','fontPick','sheet'])if(p[k]&&!b[k])b[k]=p[k];} // records from before changes were dated: fill gaps only
@@ -517,11 +520,11 @@ function applyMeta(b,p,fresh){
 /* known words: furigana is shown only for words that are not in this list */
 const Known=new Set();
 async function loadKnown(){const r=await DB.get('kv','known');Known.clear();for(const w of (r&&r.words)||[])Known.add(w);}
-const saveKnown=()=>DB.put('kv',{id:'known',words:[...Known]});
+const saveKnown=()=>{if(!syncApplying)LS.set('knownAt',tick(LS.get('knownAt',0)));return DB.put('kv',{id:'known',words:[...Known]});};
 const furiAuto=()=>S.furi!=='book'&&Known.size>0;
 function parseWordList(text){let arr;try{const j=JSON.parse(text);arr=Array.isArray(j)?j:(j&&Array.isArray(j.words)?j.words:null);}catch(e){}
   if(!arr)arr=text.split(/[\r\n,、\t]+/);return arr.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);}
-function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));}catch(e){}markDirty();}
+function saveSettings(){try{localStorage.setItem('gyokan.settings',JSON.stringify(S));if(!syncApplying)localStorage.setItem('gyokan.setAt',String(tick(localStorage.getItem('gyokan.setAt'))));}catch(e){}markDirty();}
 function applySettings(){const d=document.documentElement;S.theme='sumi';d.dataset.theme=S.theme; // always dark
   applyFont();{const fs=$('#fontSel');if(fs)fs.value=S.fontAuto!==false?'*':S.font;}if(typeof drawInk==='function')drawInk();
   for(const b of document.querySelectorAll('[data-theme-v]'))b.setAttribute('aria-pressed',b.dataset.themeV===S.theme);
@@ -640,7 +643,7 @@ async function importEpub(file){
   const twin=(await DB.all('books')).find(x=>sameBook(x,book));if(twin){const e=new Error('dup');e.dup=twin.title;throw e;}
   const pend=LS.get('pending',[]),pi=pend.findIndex(p=>sameBook(p,book));
   if(pi>=0){applyMeta(book,pend[pi],true);pend.splice(pi,1);LS.set('pending',pend);}
-  {const g=LS.get('gone',{});if(g[sigStr(book)]){delete g[sigStr(book)];LS.set('gone',g);}} // adding a book again takes back an earlier removal
+  {const g=LS.get('gone',{})[sigStr(book)];if(g)book.added=tick(g);} // adding a book again takes back an earlier removal, whatever the clocks say
   if(!book.folder){const f=shelfFor(book.title);if(f){book.folder=f;const fl=LS.get('folders',[]);if(!fl.includes(f)){fl.push(f);LS.set('folders',fl);}}} // a book on the genre list goes straight to its folder
   await DB.put('content',{id,chapters:htmls,res});await DB.put('books',book);return book;
 }
@@ -650,7 +653,7 @@ let toastT;function toast(msg,ms=2600){let t=$('.toast');if(!t){t=h('div',{class
 async function addFiles(files){files=[...files].filter(f=>/\.epub$/i.test(f.name)||f.type==='application/epub+zip');if(!files.length){toast('EPUBファイルを選んでください');return;}
   let ok=0;const dup=[];for(let i=0;i<files.length;i++){toast(`取り込み中 ${i+1}/${files.length}`,0);try{await importEpub(files[i]);ok++;}catch(e){if(e.dup){dup.push(e.dup);continue;}console.error(e);toast(`${files[i].name}：${e.message||'読み込めませんでした'}`,4200);await new Promise(r=>setTimeout(r,1800));}}
   const dm=dup.length===1?`「${dup[0]}」はすでに本棚にあります`:dup.length?`${dup.length}冊はすでに本棚にあります`:'';
-  if(ok||dm)toast([ok?`${ok}冊を本棚に追加しました`:'',dm].filter(Boolean).join('　'),dm?4200:undefined);setView('shelf');if(ok&&syncCfg())setTimeout(()=>bookSync(),1500);}
+  if(ok||dm)toast([ok?`${ok}冊を本棚に追加しました`:'',dm].filter(Boolean).join('　'),dm?4200:undefined);setView('shelf');if(ok&&syncCfg())setTimeout(()=>syncNow().catch(()=>{}),1500);}
 // choose several books at once for the folder (or the favourites) being shown
 async function pickBooks(folder){const FAV='\u2605',isFav=folder===FAV,books=(await DB.all('books')).filter(b=>isFav?!b.fav:b.folder!==folder).sort((x,y)=>x.title.localeCompare(y.title,'ja')),sel=new Set();
   const close=()=>box.remove(),go=h('button',{class:'add',disabled:''},'入れる'),list=h('ul');
@@ -770,7 +773,7 @@ function renderShelf(root,books){
       const main=()=>{menu.textContent='';
         menu.append(h('button',{class:'plain',onclick:pick},b.folder?'フォルダを変える':'フォルダに入れる'));
         if(!S.simple)for(const [k,label] of [['reading','読書中にする'],['queue','積読に戻す'],['paused','休止する'],['done','読了にする']])if(b.status!==k)menu.append(h('button',{class:'plain',onclick:async()=>{b.status=k;await DB.put('books',b);renderHome();}},label));
-        let armed=false;const del=h('button',{onclick:async()=>{if(!armed){armed=true;del.textContent='もう一度押すと削除します';return;}{const g=LS.get('gone',{});g[sigStr(b)]=Date.now();LS.set('gone',g);}await DB.del('books',b.id);await DB.del('content',b.id);if(b.pkg)bkRemove(b.pkg).catch(()=>{});toast('本棚から削除しました');renderHome();}},'本棚から削除');menu.append(del);};
+        let armed=false;const del=h('button',{onclick:async()=>{if(!armed){armed=true;del.textContent='もう一度押すと削除します';return;}{const g=LS.get('gone',{});g[sigStr(b)]=tick(Math.max(b.added||0,g[sigStr(b)]||0));LS.set('gone',g);}await DB.del('books',b.id);await DB.del('content',b.id);if(b.pkg)bkRemove(b.pkg).catch(()=>{});toast('本棚から削除しました');renderHome();}},'本棚から削除');menu.append(del);};
       const pick=()=>{menu.textContent='';menu.append(h('div',{class:'lbl'},'フォルダ'));
         for(const f of folders)if(f!==b.folder)menu.append(h('button',{class:'plain',onclick:()=>move(f)},f));
         if(b.folder)menu.append(h('button',{class:'plain',onclick:()=>move('')},'フォルダから出す'));
@@ -863,12 +866,17 @@ function startStudy(queue){
 }
 
 /* settings + backup (reading positions, vocab and settings; books themselves are re-imported from the EPUB files) */
-async function makeBackup(){const books=await DB.all('books'),snap=LS.get('metaSnap',{});
-  for(const b of books){const k=sigStr(b),m=metaStr(b);if(snap[k]==null)snap[k]=m;else if(snap[k]!==m){snap[k]=m;b.edited=Date.now();await DB.run('books','readwrite',o=>o.put(b)).catch(()=>{});}} // a change to a book's shelf or paper settings is dated here, once, when it is first sent
+// date what changed on this device since it last compared notes (shelf and paper settings per book; old undated places). Done before sending, and before weighing another device's record, so an unsent change here is never mistaken for an old one.
+async function stampEdits(books){const snap=LS.get('metaSnap',{});
+  for(const b of books){const k=sigStr(b),m=metaStr(b);let ch=false;if(b.posAt==null){b.posAt=b.opened||0;ch=true;} // books from before places were dated: the place counts as set when the book was last open
+    if(snap[k]==null)snap[k]=m;else if(snap[k]!==m){snap[k]=m;b.edited=tick(b.edited);ch=true;}if(ch){if(R.book&&R.book.id===b.id){R.book.posAt=R.book.posAt==null?b.posAt:R.book.posAt;if(b.edited)R.book.edited=b.edited;}{const was=syncApplying;syncApplying=true;const w=DB.put('books',b);syncApplying=was;await w.catch(()=>{});}}} // written without counting as a new change // a change to a book's shelf or paper settings is dated here, once, when it is first sent
   LS.set('metaSnap',snap);
-  const row=b=>({title:b.title,author:b.author,total:b.total,added:b.added,pos:b.pos,progress:b.progress,status:b.status,opened:b.opened,edited:b.edited||undefined,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined,sheet:b.sheet||undefined,pkg:b.pkg||undefined});
+}
+async function makeBackup(){const books=await DB.all('books');await stampEdits(books);
+  {const fl=LS.get('folders',[]),used=[...new Set(books.map(b=>b.folder).filter(f=>f&&!fl.includes(f)))];if(used.length){const was=syncApplying;syncApplying=true;LS.set('folders',fl.concat(used));syncApplying=was;}} // every folder a book sits in is on the list
+  const row=b=>({title:b.title,author:b.author,total:b.total,added:b.added,pos:b.pos,posAt:b.posAt||undefined,progress:b.progress,status:b.status,opened:b.opened,edited:b.edited||undefined,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined,sheet:b.sheet||undefined,pkg:b.pkg||undefined});
   const mine=books.map(row),waiting=LS.get('pending',[]).filter(p=>!books.some(b=>sameBook(b,p)));
-  return {app:'gyokan',v:2,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),srsDay:LS.get('srsDay',null),
+  return {app:'gyokan',v:2,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),srsDay:LS.get('srsDay',null),setAt:LS.get('setAt',0),foldersAt:LS.get('foldersAt',0),knownAt:LS.get('knownAt',0),
     gone:LS.get('gone',{}),goneIds:LS.get('goneIds',{}),
     folders:LS.get('folders',[]),books:mine.concat(waiting),vocab:await DB.all('vocab'),
     summaries:await loadSums(),
@@ -887,33 +895,37 @@ async function restoreBackup(data){
   if(!data||data.app!=='gyokan')throw new Error('行間のバックアップではありません');
   // removals first: a book, word, mark or note taken away elsewhere goes here too (unless it was added again since)
   const gone=LS.get('gone',{}),gi=LS.get('goneIds',{});for(const k in data.gone||{})gone[k]=Math.max(gone[k]||0,data.gone[k]);for(const k in data.goneIds||{})gi[k]=Math.max(gi[k]||0,data.goneIds[k]);LS.set('gone',gone);LS.set('goneIds',gi);
-  let books=await DB.all('books');
+  let books=await DB.all('books');await stampEdits(books);
   for(const b of books)if(gone[sigStr(b)]>(b.added||0)&&!(R.book&&R.book.id===b.id)){await DB.del('books',b.id);await DB.del('content',b.id);}
   for(const st of ['vocab','quotes','notes'])for(const x of await DB.all(st))if(gi[x.id])await DB.del(st,x.id);
   books=await DB.all('books');const pending=[],snap=LS.get('metaSnap',{});let nb=0;
-  for(const p of data.books||[]){if(gone[sigStr(p)]>(p.added||0))continue;const b=books.find(x=>sameBook(x,p));if(b){applyMeta(b,p);snap[sigStr(b)]=metaStr(b);await DB.put('books',b);nb++;}else pending.push(p);}
+  const live=R.book&&!readerEl.hidden?R.book:null;let moved=false;
+  for(const p of data.books||[]){if(gone[sigStr(p)]>(p.added||0))continue;let b=books.find(x=>sameBook(x,p));if(b){if(live&&live.id===b.id){b=live;const was=JSON.stringify(b.pos);applyMeta(b,p);moved=JSON.stringify(b.pos)!==was;}else applyMeta(b,p);snap[sigStr(b)]=metaStr(b);await DB.put('books',b);nb++;}else pending.push(p);}
+  if(moved&&live===R.book){loadChapter(live.pos.ch,{off:live.pos.off}).then(()=>toast('ほかの端末で読んだ続きに移動しました',4200)).catch(()=>{});}
   for(const p of LS.get('pending',[]))if(!pending.some(x=>sameBook(x,p))&&!books.some(x=>sameBook(x,p))&&!(gone[sigStr(p)]>(p.added||0)))pending.push(p); // still waiting from an earlier sync
   LS.set('metaSnap',snap);
-  LS.set('pending',pending);{const have=new Map((await DB.all('vocab')).map(v=>[v.id,v]));for(const v of data.vocab||[]){if(gi[v.id])continue;const m=have.get(v.id);if(!m||(v.last||0)>=(m.last||0))await DB.put('vocab',v);}} // a word reviewed more recently on this device keeps its own schedule
+  LS.set('pending',pending);if(LS.get('pending',[]).length!==pending.length)LS.set('pending',pending.map(p=>{const q=Object.assign({},p);delete q.read;delete q.people;return q;})); // if the full list does not fit, keep what is needed to fetch the books
+ {const have=new Map((await DB.all('vocab')).map(v=>[v.id,v]));for(const v of data.vocab||[]){if(gi[v.id])continue;const m=have.get(v.id);if(!m||(v.last||0)>=(m.last||0))await DB.put('vocab',v);}} // a word reviewed more recently on this device keeps its own schedule
   for(const n of data.quotes||[]){if(gi[n.id])continue;const b=books.find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('quotes',c);}}
   for(const n of data.notes||[]){if(gi[n.id])continue;const b=books.find(x=>sameBook(x,n.sig));if(b){const c=Object.assign({},n,{bookId:b.id});delete c.sig;await DB.put('notes',c);}}
   for(const r of data.ink||[]){const b=books.find(x=>sameBook(x,r.book));if(b)await DB.put('ink',{id:b.id+':'+r.ch,strokes:r.strokes});}
   if(pending.length)await DB.put('kv',{id:'syncLast',quotes:(data.quotes||[]).filter(n=>pending.some(p=>n.sig&&sameBook(p,n.sig))),notes:(data.notes||[]).filter(n=>pending.some(p=>n.sig&&sameBook(p,n.sig))),ink:(data.ink||[]).filter(r=>pending.some(p=>sameBook(p,r.book)))}); // kept for books whose files are still to come
   if(data.srsDay&&data.srsDay.day===todayStr()){const d=LS.get('srsDay',null);if(!d||d.day!==data.srsDay.day)LS.set('srsDay',data.srsDay);else LS.set('srsDay',{day:d.day,rev:Math.max(d.rev,data.srsDay.rev),fresh:Math.max(d.fresh,data.srsDay.fresh)});}
   if(Array.isArray(data.summaries))await mergeSums(data.summaries);
-  if(Array.isArray(data.known)){Known.clear();for(const w of data.known)Known.add(w);await saveKnown();}
+  if(Array.isArray(data.known)&&(data.knownAt||0)>=LS.get('knownAt',0)){Known.clear();for(const w of data.known)Known.add(w);await saveKnown();LS.set('knownAt',data.knownAt||0);} // the list changed last on the other device
   if(data.home!=null)LS.set('homeFolder',data.home);
   if(data.quizlog){const ql=LS.get('quizlog',{});for(const k in data.quizlog)if(!ql[k]||data.quizlog[k][1]>ql[k][1])ql[k]=data.quizlog[k];LS.set('quizlog',ql);}
   if(data.readlog){const rl=LS.get('readlog',{});for(const k in data.readlog)rl[k]=Math.max(rl[k]||0,data.readlog[k]);LS.set('readlog',rl);}
   if(data.log){const log=LS.get('log',{});for(const k in data.log)log[k]=Math.max(log[k]||0,data.log[k]);LS.set('log',log);}
-  if(data.folders)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
-  if(data.settings){Object.assign(S,data.settings);saveSettings();applySettings();}
+  if(data.folders){const mine=LS.get('foldersAt',0),theirs=data.foldersAt||0;if(theirs>mine){LS.set('folders',data.folders);LS.set('foldersAt',theirs);}else if(!theirs&&!mine)LS.set('folders',[...new Set([...LS.get('folders',[]),...data.folders])]);
+    const fl=LS.get('folders',[]),used=(await DB.all('books')).map(b=>b.folder).filter(f=>f&&!fl.includes(f));if(used.length)LS.set('folders',[...new Set(fl.concat(used))]);} // a folder that still holds a book is never dropped
+  if(data.settings&&(data.setAt||0)>=LS.get('setAt',0)){Object.assign(S,data.settings);saveSettings();applySettings();LS.set('setAt',data.setAt||0);}
   return {books:nb,pending:pending.length,vocab:(data.vocab||[]).length};
 }
 /* ---------- automatic sync: a record file in a private GitHub repo, and (further down) the books themselves ---------- */
 const SYNC_FILE='gyokan.json',syncCfg=()=>LS.get('sync',null);
-let syncBusy=false,syncT=null,syncDirty=false,syncApplying=false;
-function markDirty(){if(syncApplying||!syncCfg())return;syncDirty=true;clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
+let syncBusy=false,syncT=null,syncDirty=localStorage.getItem('gyokan.dirty')==='1',syncApplying=false; // remembered across restarts, so a change made just before the app was closed still goes out
+function markDirty(){if(syncApplying||!syncCfg())return;syncDirty=true;try{localStorage.setItem('gyokan.dirty','1');}catch(e){}clearTimeout(syncT);syncT=setTimeout(()=>syncPush().catch(()=>{}),30000);}
 function gh(opt={},file=SYNC_FILE){const c=syncCfg();return fetch(`https://api.github.com/repos/${c.repo}/contents/${file}`,Object.assign({},opt,{headers:Object.assign({'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},opt.headers||{})}));}
 const b64=str=>{const u=new TextEncoder().encode(str);let t='';for(let i=0;i<u.length;i+=0x8000)t+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(t);};
 const syncFail=e=>{LS.set('syncState',{ok:false,at:Date.now(),msg:String(e&&e.message||e)});};
@@ -922,20 +934,20 @@ async function syncPush(){if(!syncCfg()||syncBusy)return;syncBusy=true;clearTime
     const put=()=>gh({method:'PUT',body:JSON.stringify(Object.assign({message:'sync '+data.when,content:b64(JSON.stringify(data))},sha?{sha}:{}))});
     let r=await put();
     if(r.status===409||r.status===422){const m=await gh();sha=m.ok?(await m.json()).sha:null;
-      try{const o=await gh({headers:{'Accept':'application/vnd.github.raw+json'}});if(o.ok){const theirs=JSON.parse(await o.text());if(theirs.when&&theirs.when>LS.get('syncWhen','')){syncApplying=true;try{await restoreBackup(theirs);}finally{syncApplying=false;}data=await makeBackup();}}}catch(e){}
+      try{const o=await gh({headers:{'Accept':'application/vnd.github.raw+json'}});if(o.ok){const theirs=JSON.parse(await o.text());if(theirs.when&&theirs.app==='gyokan'){saveNow();syncApplying=true;try{await restoreBackup(theirs);}finally{syncApplying=false;}data=await makeBackup();}}}catch(e){}
       r=await put();}
     if(!r.ok)throw new Error(r.status===401||r.status===403?'トークンが無効か、権限が足りません':r.status===404?'リポジトリが見つかりません':'GitHub '+r.status);
-    LS.set('syncSha',(await r.json()).content.sha);LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});syncDirty=false;
+    LS.set('syncSha',(await r.json()).content.sha);LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});syncDirty=false;try{localStorage.removeItem('gyokan.dirty');}catch(e){}
   }catch(e){syncFail(e);throw e;}finally{syncBusy=false;}}
 // take what another device (or an earlier install) saved, if it is newer than what this device last synced
 async function syncPull(){if(!syncCfg())return false;
   try{const m=await gh();if(m.status===404){LS.set('syncSha',null);return false;}
     if(!m.ok)throw new Error(m.status===401||m.status===403?'トークンが無効か、権限が足りません':'GitHub '+m.status);
-    LS.set('syncSha',(await m.json()).sha);
+    const sha=(await m.json()).sha;if(sha===LS.get('syncSha',null)&&LS.get('syncWhen','')){LS.set('syncState',{ok:true,at:Date.now()});return false;} // the record is the one this device last saw: nothing new
     const r=await gh({headers:{'Accept':'application/vnd.github.raw+json'}});if(!r.ok)throw new Error('GitHub '+r.status);
-    const data=JSON.parse(await r.text());if(!data.when||data.when<=LS.get('syncWhen',''))return false;
-    syncApplying=true;try{await restoreBackup(data);}finally{syncApplying=false;}
-    LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});return true;
+    const data=JSON.parse(await r.text());if(!data.when||data.app!=='gyokan')return false; // judged by whether the file changed, not by the other device's clock
+    saveNow();syncApplying=true;try{await restoreBackup(data);}finally{syncApplying=false;}
+    LS.set('syncSha',sha);LS.set('syncWhen',data.when);LS.set('syncState',{ok:true,at:Date.now()});return true;
   }catch(e){syncFail(e);throw e;}}
 /* ---------- genre folders: a title → folder list kept beside the sync file (made from the media library sheet) ---------- */
 const SHELF_FILE='shelves.json';
@@ -976,7 +988,13 @@ async function sortByGenre(){let m;toast('ジャンルの一覧を読み込ん�
   const box=h('div',{class:'picker',role:'dialog','aria-label':'ジャンルで整理'},h('div',{class:'top'},h('h2',null,'ジャンルで整理'),h('button',{onclick:close},'やめる')),
     list,h('div',{class:'foot two'},h('label',null,chk,'フォルダに入っている本も見直す'),go));
   draw();document.body.append(box);}
-async function syncNow(){const got=await syncPull();await syncPush();bookSync();return got;}
+let syncRun=null,syncLast=0;
+function syncNow(quiet){if(syncRun)return syncRun;syncLast=Date.now();return syncRun=(async()=>{try{const got=await syncPull();if(!quiet||syncDirty||!LS.get('syncWhen',''))await syncPush();bookSync();return got;}finally{syncRun=null;}})();}
+// quiet check: used when the app comes back to the front and on a timer; shows the shelf again if something arrived
+function syncQuiet(){if(!syncCfg()||navigator.onLine===false||document.hidden)return;syncNow(true).then(got=>{if(got&&readerEl.hidden)renderHome().catch(()=>{});}).catch(()=>{});}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-syncLast>45000)syncQuiet();});
+addEventListener('pageshow',e=>{if(e.persisted)syncQuiet();});
+setInterval(()=>{if(Date.now()-syncLast>240000)syncQuiet();},60000);
 /* ---------- the books themselves, in the same private repository (folder "books") ----------
    Each book is sent once, as the app holds it (text, pictures, cover, contents), packed and cut into pieces of at most 24 MB.
    A device that sees a book in the shared record but does not have it fetches the pieces and puts the book on its shelf, with the
@@ -994,35 +1012,48 @@ async function packBook(b){const c=await DB.get('content',b.id);if(!c)return nul
   const head=new TextEncoder().encode(JSON.stringify({v:1,book:{title:b.title,author:b.author,cover:b.cover,added:b.added,total:b.total,chapters:b.chapters,toc:b.toc,excerpt:b.excerpt,vertical:b.vertical},chapters:c.chapters,res})),len=new Uint8Array(4);new DataView(len.buffer).setUint32(0,head.length);
   let blob=new Blob([len,head,...bufs]);if(typeof CompressionStream==='function'){try{blob=await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();}catch(e){}}
   return new Uint8Array(await blob.arrayBuffer());}
+const gitSha=async u=>{const hd=new TextEncoder().encode(`blob ${u.length}\0`),d=new Uint8Array(await crypto.subtle.digest('SHA-1',await new Blob([hd,u]).arrayBuffer()));return [...d].map(x=>x.toString(16).padStart(2,'0')).join('');};
+const whole=(pkg,list)=>{if(!pkg||!pkg.key)return false;for(let i=0;i<(pkg.parts||1);i++)if(!list.has(`${pkg.key}.${i}`))return false;return true;};
 async function bkUpload(b,list){const key=await bookKey(b),bytes=await packBook(b);if(!bytes)return false;const n=Math.max(1,Math.ceil(bytes.length/BK_PART));
   for(let i=0;i<n;i++){const name=`${key}.${i}`,part=bytes.subarray(i*BK_PART,(i+1)*BK_PART),have=list.get(name);
+    if(have&&have.sha===await gitSha(part))continue; // this piece is already there, unchanged (an earlier upload got this far)
     const body=JSON.stringify(Object.assign({message:`book ${i+1}/${n}`,content:toB64(part)},have?{sha:have.sha}:{})),r=await ghTry(()=>gh({method:'PUT',body},`${BK_DIR}/${name}`));
     if(!r.ok)throw new Error(r.status===413||r.status===422?`「${b.title}」を送れませんでした（${r.status}）`:'GitHub '+r.status);list.set(name,{size:part.length,sha:(await r.json()).content.sha});}
-  const cur=await DB.get('books',b.id);if(!cur)return false;cur.pkg={key,parts:n,bytes:bytes.length};await DB.put('books',cur);return true;}
-async function bkDownload(p){const parts=[];for(let i=0;i<p.pkg.parts;i++){const r=await ghTry(()=>gh({headers:{'Accept':'application/vnd.github.raw+json'}},`${BK_DIR}/${p.pkg.key}.${i}`));if(!r.ok)throw new Error('GitHub '+r.status);parts.push(new Uint8Array(await r.arrayBuffer()));}
+  const cur=await DB.get('books',b.id);if(!cur)return false;cur.pkg={key,parts:n,bytes:bytes.length};if(R.book&&R.book.id===cur.id)R.book.pkg=cur.pkg;await DB.put('books',cur);return true;}
+async function bkDownload(p){const parts=[];let got=0;for(let i=0;i<p.pkg.parts;i++){const r=await ghTry(()=>gh({headers:{'Accept':'application/vnd.github.raw+json'}},`${BK_DIR}/${p.pkg.key}.${i}`));if(!r.ok)throw new Error('GitHub '+r.status);const u=new Uint8Array(await r.arrayBuffer());got+=u.length;parts.push(u);}
+  if(p.pkg.bytes&&got!==p.pkg.bytes)throw new Error(`「${p.title}」が途中までしか届きませんでした`); // never shelve a book that arrived incomplete
   let blob=new Blob(parts);const m=new Uint8Array(await blob.slice(0,2).arrayBuffer());if(m[0]===0x1f&&m[1]===0x8b)blob=await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
   const buf=await blob.arrayBuffer(),hl=new DataView(buf).getUint32(0),meta=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,4,hl))),base=4+hl,res={};
+  if(meta.v>1)throw new Error('この本は新しい版の行間で保存されています。アプリを開き直して更新してください');
+  if(!meta.book||!Array.isArray(meta.chapters)||!meta.chapters.length)throw new Error(`「${p.title}」の中身が読めませんでした`);
   for(const [path,type,off,len] of meta.res)res[path]={type,buf:buf.slice(base+off,base+off+len)};
   if((await DB.all('books')).some(x=>sameBook(x,meta.book)))return null; // arrived another way meanwhile
   const id='b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),book=applyMeta(Object.assign({id,opened:0,pos:{ch:0,off:0},progress:0,status:'queue'},meta.book,{pkg:p.pkg}),p,true);
-  await DB.put('content',{id,chapters:meta.chapters,res});await DB.put('books',book);
+  await DB.put('content',{id,chapters:meta.chapters,res});
+  try{await DB.put('books',book);}catch(e){await DB.del('content',id).catch(()=>{});throw e;}
   const snap=LS.get('metaSnap',{});snap[sigStr(book)]=metaStr(book);LS.set('metaSnap',snap);
   await attachTo(book,await DB.get('kv','syncLast'));return book;}
 async function bkRemove(pkg){const list=await bkList();for(let i=0;i<(pkg.parts||1);i++){const name=`${pkg.key}.${i}`,f=list.get(name);if(f)await gh({method:'DELETE',body:JSON.stringify({message:'remove book',sha:f.sha})},`${BK_DIR}/${name}`);}}
 // bring this device and the repository level with each other: fetch what is missing here, send what is missing there
+const fullErr=e=>e&&(e.name==='QuotaExceededError'||/quota/i.test(String(e.message||e)));
 async function bookSync(){if(BK.busy||!syncCfg()||S.syncBooks===false||navigator.onLine===false)return;BK.busy=true;BK.err='';BK.up=BK.down=0;let sent=0;
   const say=()=>{if(readerEl.hidden&&BK.todo)toast(`本を同期中　残り${BK.todo}冊（↓${BK.down}　↑${BK.up}）`,0);};
+  let halt=false;const stop=e=>{BK.err=fullErr(e)?'この端末の空き容量が足りません':String(e&&e.message||e);return halt=fullErr(e)||/GitHub 40[13]|トークン/.test(BK.err)||navigator.onLine===false;};
   try{try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
     const list=await bkList(),gone=LS.get('gone',{});BK.cloud=new Set([...list.keys()].map(n=>n.split('.')[0])).size;
-    const want=LS.get('pending',[]).filter(p=>p.pkg&&list.has(p.pkg.key+'.0')&&!(gone[sigStr(p)]>(p.added||0)));
-    const mine=(await DB.all('books')).filter(b=>!(b.pkg&&list.has(b.pkg.key+'.0')));BK.todo=want.length+mine.length;say();
-    for(const p of want){if(!syncCfg())break;try{const got=await bkDownload(p);LS.set('pending',LS.get('pending',[]).filter(x=>!sameBook(x,p)));if(got){BK.down++;if(readerEl.hidden)renderHome().catch(()=>{});}}catch(e){BK.err=String(e&&e.message||e);if(/GitHub 40[13]/.test(BK.err))break;}BK.todo--;say();}
-    for(const b of mine){if(!syncCfg())break;try{if(await bkUpload(b,list)){BK.up++;sent++;}}catch(e){BK.err=String(e&&e.message||e);if(/GitHub 40[13]/.test(BK.err))break;}BK.todo--;say();
+    const want=LS.get('pending',[]).filter(p=>whole(p.pkg,list)&&!(gone[sigStr(p)]>(p.added||0)));
+    const mine=(await DB.all('books')).filter(b=>!whole(b.pkg,list));BK.todo=want.length+mine.length;say();
+    for(const p of want){if(!syncCfg())break;try{const got=await bkDownload(p);LS.set('pending',LS.get('pending',[]).filter(x=>!sameBook(x,p)));if(got){BK.down++;if(readerEl.hidden)renderHome().catch(()=>{});}}catch(e){if(stop(e))break;}BK.todo--;say();}
+    if(!halt)for(const b of mine){if(!syncCfg())break;try{if(await bkUpload(b,list)){BK.up++;sent++;}}catch(e){if(stop(e))break;}BK.todo--;say();
       if(sent>=5){sent=0;await syncPush().catch(()=>{});}} // let the other devices know as books go up, not only at the end
+    // copies left in the repository by a book that was removed everywhere are cleared away
+    try{const keep=new Set();for(const b of await DB.all('books'))keep.add(await bookKey(b));for(const p of LS.get('pending',[]))keep.add(await bookKey(p));
+      for(const sig in gone){const [title,author,total]=sig.split('\u0001'),key=await bookKey({title,author,total});if(keep.has(key))continue;
+        for(const [name,f] of list)if(name.split('.')[0]===key){await gh({method:'DELETE',body:JSON.stringify({message:'remove book',sha:f.sha})},`${BK_DIR}/${name}`);list.delete(name);}}}catch(e){}
     if(BK.up||BK.down){await syncPush().catch(()=>{});}BK.at=Date.now();
     if(readerEl.hidden){if(BK.up||BK.down||BK.err)toast(BK.err?`本の同期が途中で止まりました：${BK.err}`:`本を同期しました（受信${BK.down}冊・送信${BK.up}冊）`,BK.err?7000:3200);else{const t=$('.toast');if(t&&/本を同期中/.test(t.textContent))t.hidden=true;}renderHome().catch(()=>{});}
   }catch(e){BK.err=String(e&&e.message||e);}finally{BK.busy=false;BK.todo=0;}}
-addEventListener('online',()=>{if(syncCfg())syncNow().catch(()=>{});});
+addEventListener('online',()=>syncQuiet());
 function syncRow(){const c=syncCfg(),st=LS.get('syncState',null),hm=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;};
   const note='本・読書位置・単語帳・手書き・ノート・設定を、自分の非公開GitHubリポジトリに自動で保存し、ほかの端末と同じ状態にします。';
   const wait=LS.get('pending',[]).length,bk=BK.busy?`本を同期中（残り${BK.todo}冊）`:BK.err?`本の同期が止まっています：${BK.err}`:wait?`まだ届いていない本 ${wait}冊`:BK.at?`本もすべて同期済み（${BK.cloud}冊）`:'';
@@ -1151,7 +1182,7 @@ function hud(){
   const sc=$('#scrub');sc.max=b.total;sc.value=g;sc.style.direction=isV()?'rtl':'ltr';
 }
 let saveT;function saveSoon(){clearTimeout(saveT);saveT=setTimeout(saveNow,350);}
-function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)return;const off=currentOff();b.pos={ch:R.ch,off};b.progress=R.frac||0;b.opened=Date.now();if(b.progress>=1)b.status='done';else if(b.status==='done'||b.status==='queue'||!b.status)b.status='reading';
+function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)return;const off=currentOff();if(!b.pos||b.pos.ch!==R.ch||b.pos.off!==off)b.posAt=tick(b.posAt);b.pos={ch:R.ch,off};b.progress=R.frac||0;b.opened=Date.now();if(b.progress>=1)b.status='done';else if(b.status==='done'||b.status==='queue'||!b.status)b.status='reading';
   const ex=R.text.slice(off,off+260).trim();if(ex.length>40)b.excerpt=ex;DB.put('books',b).catch(()=>{});}
 async function loadChapter(ch,target){
   if(R.busy)return;R.busy=true;
@@ -1354,7 +1385,7 @@ $('#scrub').addEventListener('change',e=>gotoGlobal(+e.target.value));
 $('#scrub').addEventListener('input',e=>{const b=R.book,g=+e.target.value;$('#siLeft').textContent=`${Math.round(g/b.total*100)}%`;});
 // only a real change of size lays the page out again: iPadOS also fires resize when its own menus and sheets come and go
 let rzT,rzW=innerWidth,rzH=innerHeight;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(innerWidth===rzW&&innerHeight===rzH)return;rzW=innerWidth;rzH=innerHeight;sizeInk();relayout();},160);});
-addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden){saveNow();if(syncDirty)syncPush().catch(()=>{});}});
+addEventListener('pagehide',saveNow);document.addEventListener('visibilitychange',()=>{if(document.hidden){saveNow();if(syncDirty&&syncCfg())syncPush().catch(()=>{});}});
 
 /* ---------- handwriting: each stroke is tied to a character and stored in font-size units,
    so it follows the text when the page breaks or the font size change ---------- */
@@ -2266,7 +2297,7 @@ const Music=(()=>{
 (async()=>{applySettings();addIcons($('#aa'));await DB.open();await loadKnown();loadUserFonts().then(()=>{if(USERFONTS.length){applyFont();if(!readerEl.hidden)relayout();}});
   LS.set('shelf',Object.assign({filter:'all',sort:'recent'},LS.get('shelf',{}),{folder:LS.get('homeFolder','')})); // open the library on the chosen view
   await renderHome();
-  if(syncCfg()){syncPull().then(got=>{if(got&&readerEl.hidden)renderHome();}).catch(()=>{}).then(()=>bookSync());loadShelves().catch(()=>{});}
+  if(syncCfg()){syncQuiet();loadShelves().catch(()=>{});}
   try{if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
   window.__ready=true;})();
 </script>
