@@ -988,10 +988,12 @@ async function sortByGenre(){let m;toast('ジャンルの一覧を読み込ん�
   const box=h('div',{class:'picker',role:'dialog','aria-label':'ジャンルで整理'},h('div',{class:'top'},h('h2',null,'ジャンルで整理'),h('button',{onclick:close},'やめる')),
     list,h('div',{class:'foot two'},h('label',null,chk,'フォルダに入っている本も見直す'),go));
   draw();document.body.append(box);}
+// redraw the shelf after a background sync, but never while something is being typed there (redrawing would take the keyboard away): wait until typing is done
+let homeT=null;function homeRefresh(){clearTimeout(homeT);if(!readerEl.hidden)return;const el=document.activeElement;if(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)&&el.type!=='file'){homeT=setTimeout(homeRefresh,1500);return;}renderHome().catch(()=>{});}
 let syncRun=null,syncLast=0;
 function syncNow(quiet){if(syncRun)return syncRun;syncLast=Date.now();return syncRun=(async()=>{try{const got=await syncPull();if(!quiet||syncDirty||!LS.get('syncWhen',''))await syncPush();bookSync();return got;}finally{syncRun=null;}})();}
 // quiet check: used when the app comes back to the front and on a timer; shows the shelf again if something arrived
-function syncQuiet(){if(!syncCfg()||navigator.onLine===false||document.hidden)return;syncNow(true).then(got=>{if(got&&readerEl.hidden)renderHome().catch(()=>{});}).catch(()=>{});}
+function syncQuiet(){if(!syncCfg()||navigator.onLine===false||document.hidden)return;syncNow(true).then(got=>{if(got)homeRefresh();}).catch(()=>{});}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-syncLast>45000)syncQuiet();});
 addEventListener('pageshow',e=>{if(e.persisted)syncQuiet();});
 setInterval(()=>{if(Date.now()-syncLast>240000)syncQuiet();},60000);
@@ -1043,7 +1045,7 @@ async function bookSync(){if(BK.busy||!syncCfg()||S.syncBooks===false||navigator
     const list=await bkList(),gone=LS.get('gone',{});BK.cloud=new Set([...list.keys()].map(n=>n.split('.')[0])).size;
     const want=LS.get('pending',[]).filter(p=>whole(p.pkg,list)&&!(gone[sigStr(p)]>(p.added||0)));
     const mine=(await DB.all('books')).filter(b=>!whole(b.pkg,list));BK.todo=want.length+mine.length;say();
-    for(const p of want){if(!syncCfg())break;try{const got=await bkDownload(p);LS.set('pending',LS.get('pending',[]).filter(x=>!sameBook(x,p)));if(got){BK.down++;if(readerEl.hidden)renderHome().catch(()=>{});}}catch(e){if(stop(e))break;}BK.todo--;say();}
+    for(const p of want){if(!syncCfg())break;try{const got=await bkDownload(p);LS.set('pending',LS.get('pending',[]).filter(x=>!sameBook(x,p)));if(got){BK.down++;homeRefresh();}}catch(e){if(stop(e))break;}BK.todo--;say();}
     if(!halt)for(const b of mine){if(!syncCfg())break;try{if(await bkUpload(b,list)){BK.up++;sent++;}}catch(e){if(stop(e))break;}BK.todo--;say();
       if(sent>=5){sent=0;await syncPush().catch(()=>{});}} // let the other devices know as books go up, not only at the end
     // copies left in the repository by a book that was removed everywhere are cleared away
@@ -1051,7 +1053,7 @@ async function bookSync(){if(BK.busy||!syncCfg()||S.syncBooks===false||navigator
       for(const sig in gone){const [title,author,total]=sig.split('\u0001'),key=await bookKey({title,author,total});if(keep.has(key))continue;
         for(const [name,f] of list)if(name.split('.')[0]===key){await gh({method:'DELETE',body:JSON.stringify({message:'remove book',sha:f.sha})},`${BK_DIR}/${name}`);list.delete(name);}}}catch(e){}
     if(BK.up||BK.down){await syncPush().catch(()=>{});}BK.at=Date.now();
-    if(readerEl.hidden){if(BK.up||BK.down||BK.err)toast(BK.err?`本の同期が途中で止まりました：${BK.err}`:`本を同期しました（受信${BK.down}冊・送信${BK.up}冊）`,BK.err?7000:3200);else{const t=$('.toast');if(t&&/本を同期中/.test(t.textContent))t.hidden=true;}renderHome().catch(()=>{});}
+    if(readerEl.hidden){if(BK.up||BK.down||BK.err)toast(BK.err?`本の同期が途中で止まりました：${BK.err}`:`本を同期しました（受信${BK.down}冊・送信${BK.up}冊）`,BK.err?7000:3200);else{const t=$('.toast');if(t&&/本を同期中/.test(t.textContent))t.hidden=true;}homeRefresh();}
   }catch(e){BK.err=String(e&&e.message||e);}finally{BK.busy=false;BK.todo=0;}}
 addEventListener('online',()=>syncQuiet());
 function syncRow(){const c=syncCfg(),st=LS.get('syncState',null),hm=t=>{const d=new Date(t);return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;};
