@@ -513,7 +513,7 @@ function applyMeta(b,p,fresh){
   const at=x=>x.posAt!=null?x.posAt:(x.opened||0);
   if(fresh||at(p)>at(b)){if(p.pos)b.pos=p.pos;b.progress=p.progress||0;b.status=p.status||b.status||'reading';if(p.posAt)b.posAt=p.posAt;else delete b.posAt;}
   b.opened=Math.max(b.opened||0,p.opened||0);
-  if(p.read)b.read=fresh?p.read:mergeRead(b.read,p.read);if(p.people&&!b.people)b.people=p.people;if(p.pkg&&!b.pkg)b.pkg=p.pkg;
+  if(p.unread||b.unread)b.unread=mergeUn(b.unread,p.unread);if(p.read||b.read){b.read=mergeRead(b.read,p.read,b.unread);if(!Object.keys(b.read).length)delete b.read;}if(p.people&&!b.people)b.people=p.people;if(p.pkg&&!b.pkg)b.pkg=p.pkg;
   if(fresh||(p.edited||0)>(b.edited||0)){for(const k of META)if(k==='fav')b.fav=!!p.fav;else if(p[k])b[k]=p[k];else delete b[k];if(p.edited)b.edited=p.edited;if(p.status&&(p.edited||0)>(b.opened||0))b.status=p.status;}
   else if(!(b.edited||0)&&!(p.edited||0)){if(p.folder)b.folder=p.folder;if(p.fav)b.fav=true;for(const k of ['paper','font','fontPick','sheet'])if(p[k]&&!b[k])b[k]=p[k];} // records from before changes were dated: fill gaps only
   return b;}
@@ -874,7 +874,7 @@ async function stampEdits(books){const snap=LS.get('metaSnap',{});
 }
 async function makeBackup(){const books=await DB.all('books');await stampEdits(books);
   {const fl=LS.get('folders',[]),used=[...new Set(books.map(b=>b.folder).filter(f=>f&&!fl.includes(f)))];if(used.length){const was=syncApplying;syncApplying=true;LS.set('folders',fl.concat(used));syncApplying=was;}} // every folder a book sits in is on the list
-  const row=b=>({title:b.title,author:b.author,total:b.total,added:b.added,pos:b.pos,posAt:b.posAt||undefined,progress:b.progress,status:b.status,opened:b.opened,edited:b.edited||undefined,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined,sheet:b.sheet||undefined,pkg:b.pkg||undefined});
+  const row=b=>({title:b.title,author:b.author,total:b.total,added:b.added,pos:b.pos,posAt:b.posAt||undefined,progress:b.progress,status:b.status,opened:b.opened,edited:b.edited||undefined,folder:b.folder||'',fav:!!b.fav,read:b.read||undefined,unread:b.unread||undefined,people:b.people||undefined,paper:b.paper||undefined,font:b.font||undefined,fontPick:b.fontPick||undefined,sheet:b.sheet||undefined,pkg:b.pkg||undefined});
   const mine=books.map(row),waiting=LS.get('pending',[]).filter(p=>!books.some(b=>sameBook(b,p)));
   return {app:'gyokan',v:2,when:new Date().toISOString(),settings:S,plan:LS.get('plan',null),rot:LS.get('rot',{}),known:[...Known],log:LS.get('log',{}),readlog:LS.get('readlog',{}),quizlog:LS.get('quizlog',{}),home:LS.get('homeFolder',''),srsDay:LS.get('srsDay',null),setAt:LS.get('setAt',0),foldersAt:LS.get('foldersAt',0),knownAt:LS.get('knownAt',0),
     gone:LS.get('gone',{}),goneIds:LS.get('goneIds',{}),
@@ -900,8 +900,8 @@ async function restoreBackup(data){
   for(const st of ['vocab','quotes','notes'])for(const x of await DB.all(st))if(gi[x.id])await DB.del(st,x.id);
   books=await DB.all('books');const pending=[],snap=LS.get('metaSnap',{});let nb=0;
   const live=R.book&&!readerEl.hidden?R.book:null;let moved=false;
-  for(const p of data.books||[]){if(gone[sigStr(p)]>(p.added||0))continue;let b=books.find(x=>sameBook(x,p));if(b){if(live&&live.id===b.id){b=live;const was=JSON.stringify(b.pos);applyMeta(b,p);moved=JSON.stringify(b.pos)!==was;}else applyMeta(b,p);snap[sigStr(b)]=metaStr(b);await DB.put('books',b);nb++;}else pending.push(p);}
-  if(moved&&live===R.book){loadChapter(live.pos.ch,{off:live.pos.off}).then(()=>toast('ほかの端末で読んだ続きに移動しました',4200)).catch(()=>{});}
+  for(const p of data.books||[]){if(gone[sigStr(p)]>(p.added||0))continue;let b=books.find(x=>sameBook(x,p));if(b){if(live&&live.id===b.id){b=live;const was=JSON.stringify(resumeAt(b));applyMeta(b,p);moved=JSON.stringify(resumeAt(b))!==was;}else applyMeta(b,p);snap[sigStr(b)]=metaStr(b);await DB.put('books',b);nb++;}else pending.push(p);}
+  if(moved&&live===R.book){const r=resumeAt(live);loadChapter(r.ch,{off:r.off,hold:true}).then(()=>toast('ほかの端末で読んだ続きに移動しました',4200)).catch(()=>{});}
   for(const p of LS.get('pending',[]))if(!pending.some(x=>sameBook(x,p))&&!books.some(x=>sameBook(x,p))&&!(gone[sigStr(p)]>(p.added||0)))pending.push(p); // still waiting from an earlier sync
   LS.set('metaSnap',snap);
   LS.set('pending',pending);if(LS.get('pending',[]).length!==pending.length)LS.set('pending',pending.map(p=>{const q=Object.assign({},p);delete q.read;delete q.people;return q;})); // if the full list does not fit, keep what is needed to fetch the books
@@ -1081,6 +1081,8 @@ function renderSettings(root){
     h('div',{class:'row'},h('span',null,'バックアップ',h('small',null,'読書位置・単語帳・設定を一つのファイルにします。本はEPUBから入れ直します。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:exportBackup},'書き出す'),h('button',{class:'ghost',onclick:()=>$('#backupFile').click()},'読み込む'))),
     knownRow(),
     syncRow(),
+    (()=>{const mk=(v,t)=>h('button',{class:'ghost','aria-pressed':String((S.resume==='page'?'page':'mark')===v),onclick:()=>{S.resume=v;saveSettings();renderHome();}},t);
+      return h('div',{class:'row'},h('span',null,'本を開く場所',h('small',null,'どの端末でも、最後に押した「読んだ」印のすぐ後から始めます。印がまだない本は、最後に開いていたページから始めます。')),h('div',{class:'step'},mk('mark','「読んだ」の続き'),mk('page','最後のページ')));})(),
     h('div',{class:'row'},h('span',null,'読書の記録',h('small',null,S.simple?'本文の「読んだ」を押した分の合計です。':'本文の「読んだ」を押した分の合計です。ページの目標もこの数で進みます。')),h('div',{class:'step'},h('button',{class:'ghost',onclick:showStats},'見る'))),
     S.simple?null:keyRow(),
     h('div',{class:'row'},h('span',null,'文字・組み方・手書き',h('small',null,'本を開き、上の余白を押して「表示」から変えられます。')))));
@@ -1184,7 +1186,9 @@ function hud(){
   const sc=$('#scrub');sc.max=b.total;sc.value=g;sc.style.direction=isV()?'rtl':'ltr';
 }
 let saveT;function saveSoon(){clearTimeout(saveT);saveT=setTimeout(saveNow,350);}
-function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden)return;const off=currentOff();if(!b.pos||b.pos.ch!==R.ch||b.pos.off!==off)b.posAt=tick(b.posAt);b.pos={ch:R.ch,off};b.progress=R.frac||0;b.opened=Date.now();if(b.progress>=1)b.status='done';else if(b.status==='done'||b.status==='queue'||!b.status)b.status='reading';
+function saveNow(){clearTimeout(saveT);const b=R.book;if(!b||readerEl.hidden||R.busy)return;const off=currentOff(),a=R.anchor,still=a&&a.ch===R.ch&&R.pages[0]&&(S.scroll?Math.abs(R.pages[0].s-a.c)<4:R.page===a.page);
+  if(still){b.opened=Date.now();DB.put('books',b).catch(()=>{});return;} // still on the page it was opened at (or marked on): the saved place stands as it is
+  R.anchor=null;if(!b.pos||b.pos.ch!==R.ch||b.pos.off!==off)b.posAt=tick(b.posAt);b.pos={ch:R.ch,off};b.progress=R.frac||0;b.opened=Date.now();if(b.progress>=1)b.status='done';else if(b.status==='done'||b.status==='queue'||!b.status)b.status='reading';
   const ex=R.text.slice(off,off+260).trim();if(ex.length>40)b.excerpt=ex;DB.put('books',b).catch(()=>{});}
 async function loadChapter(ch,target){
   if(R.busy)return;R.busy=true;
@@ -1197,6 +1201,7 @@ async function loadChapter(ch,target){
     else{let k=0;if(target){if(target.end)k=R.pages.length-1;else if(fragC!=null)k=pageOfCoord(fragC+2);else if(target.off)k=pageOfOffset(target.off);}
       show(k);flow.style.visibility='';}
     indexChapter();loadInk();
+    R.anchor=target&&target.hold?{ch:R.ch,page:R.page,c:R.pages[0]?R.pages[0].s:0}:null;
   }finally{R.busy=false;}
 }
 // several adjustments in a row keep the place they started from (each one alone would slip back to the start of its page)
@@ -1234,7 +1239,17 @@ function heatNode(log){const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1)
     wrap.append(h('div',{class:'yr'},h('h3',null,`${year}年`),h('span',null,prev,next)),months,grid,
       h('div',{class:'legend'},h('span',null,'0'),h('i',null),h('span',null,'1'),...[1,3,7,15,30,50].map(p=>h('i',{style:`background:${heatColor(p*PAGE_CHARS)}`})),h('span',null,'50ページ〜')),info);};
   draw();return wrap;}
-const mergeRead=(a,b)=>{const o=JSON.parse(JSON.stringify(a||{}));for(const ch in b||{}){o[ch]=o[ch]||{};for(const e in b[ch])if(!o[ch][e])o[ch][e]=b[ch][e];}return o;};
+const markTs=m=>m?(m[2]||Date.parse(m[0])||0):0;
+// marks from two devices: every mark either side has, the later press of the same mark, minus marks taken off again after they were made (un = when each was taken off)
+const mergeRead=(a,b,un)=>{const o=JSON.parse(JSON.stringify(a||{}));for(const ch in b||{}){o[ch]=o[ch]||{};for(const e in b[ch])if(!o[ch][e]||markTs(b[ch][e])>markTs(o[ch][e]))o[ch][e]=b[ch][e];}
+  for(const ch in un||{})for(const e in un[ch])if(o[ch]&&o[ch][e]&&un[ch][e]>=markTs(o[ch][e])){delete o[ch][e];if(!Object.keys(o[ch]).length)delete o[ch];}return o;};
+const mergeUn=(a,b)=>{const o=JSON.parse(JSON.stringify(a||{}));for(const ch in b||{}){o[ch]=o[ch]||{};for(const e in b[ch])o[ch][e]=Math.max(o[ch][e]||0,b[ch][e]);}return o;};
+// the mark pressed most recently (if two were pressed at the same moment, the one further on)
+function lastMark(b){let best=null;for(const ch in b.read||{})for(const e in b.read[ch]){const t=markTs(b.read[ch][e]),c=+ch,x=+e;if(!best||t>best.t||(t===best.t&&(c>best.ch||(c===best.ch&&x>best.off))))best={ch:c,off:x,t};}return best;}
+// where a book is picked up: just after the last 「読んだ」 mark, or (no marks yet, or the setting says so) the page it was left on
+function resumeAt(b){const m=S.resume!=='page'?lastMark(b):null;if(!m)return {ch:(b.pos&&b.pos.ch)||0,off:(b.pos&&b.pos.off)||0,mark:false};
+  const len=b.chapters[m.ch]?b.chapters[m.ch].chars:0;if(len&&m.off>=len-1&&m.ch<b.chapters.length-1)return {ch:m.ch+1,off:0,mark:true};return {ch:m.ch,off:m.off,mark:true};}
+const fracAt=(b,ch,off)=>{let g=off;for(let i=0;i<ch&&i<b.chapters.length;i++)g+=b.chapters[i].chars;return b.total?Math.min(1,g/b.total):0;};
 function placeReadMarks(){
   if(!R.book)return;const w=document.createTreeWalker(flow,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===1?(n.localName==='rt'?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT});
   const ends=[];let off=0,blk=null,lastNode=null,solid=0;
@@ -1251,8 +1266,9 @@ function placeReadMarks(){
 }
 function readMarkAt(x,y){const vr=vrect();for(const m of flow.querySelectorAll('.rd')){const r=m.getBoundingClientRect();if(r.width<1||r.right<vr.left||r.left>vr.right||r.bottom<vr.top||r.top>vr.bottom)continue;const px=isV()?6:14,py=isV()?14:6;if(x>=r.left-px&&x<=r.right+px&&y>=r.top-py&&y<=r.bottom+py)return m;}return null;}
 function toggleRead(m){const b=R.book,e=+m.dataset.e,n=e-(+m.dataset.s),log=LS.get('readlog',{});b.read=b.read||{};const c=b.read[R.ch]=b.read[R.ch]||{};
-  if(c[e]){const d=c[e][0];log[d]=Math.max(0,(log[d]||0)-c[e][1]);if(!log[d])delete log[d];delete c[e];m.setAttribute('aria-pressed','false');for(const x of m.blocks||[])x.classList.remove('rd-done');}
-  else{const d=todayStr();c[e]=[d,n,Date.now()];log[d]=(log[d]||0)+n;m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
+  if(c[e]){const d=c[e][0];log[d]=Math.max(0,(log[d]||0)-c[e][1]);if(!log[d])delete log[d];{b.unread=b.unread||{};(b.unread[R.ch]=b.unread[R.ch]||{})[e]=tick(markTs(c[e]));}delete c[e];if(!Object.keys(c).length)delete b.read[R.ch];m.setAttribute('aria-pressed','false');for(const x of m.blocks||[])x.classList.remove('rd-done');}
+  else{const d=todayStr();c[e]=[d,n,tick(((b.unread||{})[R.ch]||{})[e])];log[d]=(log[d]||0)+n;
+    if(S.resume!=='page'){const r=resumeAt(b);b.pos={ch:r.ch,off:r.off};b.progress=fracAt(b,r.ch,r.off);b.posAt=tick(b.posAt);R.anchor={ch:R.ch,page:R.page,c:R.pages[0]?R.pages[0].s:0};if(b.progress>=1)b.status='done';else if(b.status!=='reading')b.status='reading';}m.setAttribute('aria-pressed','true');for(const x of m.blocks||[])x.classList.add('rd-done');}
   quizCount(R.ch,+m.dataset.s,e,!!c[e],e>=R.text.length);
   LS.set('readlog',log);DB.put('books',b).catch(()=>{});closeDict();}
 function quizStatsNode(){const l=LS.get('quizlog',{}),keys=Object.keys(QTYPES).filter(k=>l[k]&&l[k][1]);if(!keys.length)return null;const box=h('div',{class:'qstats'},h('h3',null,'読解クイズ　問題の種類ごとの正答率'));
@@ -1290,7 +1306,8 @@ async function openBook(id){
   for(const t of (book.toc.length?book.toc:book.chapters.map((c,i)=>({title:c.title||`第${i+1}部分`,ch:i,frag:''}))))list.append(h('li',null,h('button',{'data-ch':t.ch,onclick:()=>{closePanels();setUi(false);loadChapter(t.ch,t.frag?{frag:t.frag}:null);}},t.title)));
   for(const b of document.querySelectorAll('[data-dir-v]'))b.setAttribute('aria-pressed',(b.dataset.dirV==='v')===book.vertical);setFlowButtons();setFuriButtons();
   const tt=$('.toast');if(tt)tt.hidden=true;$('#home').hidden=true;readerEl.hidden=false;setUi(false);closePanels();
-  sizeInk();await loadChapter(book.pos.ch,{off:book.pos.off});$('#aiInkRow').hidden=$('#aiRow').hidden=!aiKey();
+  sizeInk();{const r=resumeAt(book);await loadChapter(r.ch,{off:r.off,hold:true});
+    if(r.mark&&(book.pos.ch!==r.ch||book.pos.off!==r.off)){book.pos={ch:r.ch,off:r.off};book.progress=fracAt(book,r.ch,r.off);book.posAt=tick(book.posAt);DB.put('books',book).catch(()=>{});}}$('#aiInkRow').hidden=$('#aiRow').hidden=!aiKey();
 }
 async function nudge(plan){
   const books=await DB.all('books'),nx=plan.items.find(x=>!x.done&&x.id!==R.book.id&&books.some(b=>b.id===x.id)),el=$('#nudge');el.textContent='';el.dataset.kind='plan';
